@@ -53,6 +53,10 @@ public class UserCommunity {
 	@Column(nullable = false)
 	private SilinganRealmRole role;
 
+ 	@Column(nullable = false)
+	@Builder.Default
+	private Boolean active = true;
+
 	@CreationTimestamp
 	@Column(name = "joined_at", columnDefinition = "TIMESTAMP")
 	private LocalDateTime joinedAt;

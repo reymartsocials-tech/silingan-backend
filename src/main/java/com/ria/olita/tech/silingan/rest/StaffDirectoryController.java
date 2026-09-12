@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ria.olita.tech.silingan.dto.res.CommunityStaffMemberResponse;
 import com.ria.olita.tech.silingan.dto.res.CommunityStaffStatus;
+import com.ria.olita.tech.silingan.entity.rbac.Action;
+import com.ria.olita.tech.silingan.entity.rbac.Domain;
 import com.ria.olita.tech.silingan.entity.rbac.StaffRoleCode;
+import com.ria.olita.tech.silingan.security.permission.RequiresPermission;
 import com.ria.olita.tech.silingan.service.StaffDirectoryService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,13 +28,14 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/v1/communities/{communityId}/staff")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('COMMUNITY_ADMIN') or hasRole('PLATFORM_ADMIN')")
+@PreAuthorize("isAuthenticated()")
 @Tag(name = "Staff Directory", description = "Centralized staff directory for a community")
 public class StaffDirectoryController {
 
 	private final StaffDirectoryService staffDirectoryService;
 
 	@GetMapping("/directory")
+	@RequiresPermission(domain = Domain.STAFF, action = Action.VIEW)
 	@Operation(
 		summary = "Get community staff directory",
 		description = "Returns the community staff with optional search, role filter, and status filter."

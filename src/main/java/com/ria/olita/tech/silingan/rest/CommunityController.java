@@ -257,7 +257,7 @@ public class CommunityController {
 	}
 
 	@PutMapping("/switch/{communityId}")
-	@PreAuthorize("hasRole('RESIDENT')")
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Switch active community")
 	public ResponseEntity<ApiResponse<UUID>> switchCommunity(
 		@Parameter(description = "Community ID to switch to", example = "550e8400-e29b-41d4-a716-446655440000") @PathVariable UUID communityId) {

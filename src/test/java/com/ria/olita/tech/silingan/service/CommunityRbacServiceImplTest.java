@@ -7,21 +7,30 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import com.ria.olita.tech.silingan.dto.req.AssignStaffRoleRequest;
 import com.ria.olita.tech.silingan.dto.res.PermissionMatrixResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleResponse;
+import com.ria.olita.tech.silingan.entity.Community;
+import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
+import com.ria.olita.tech.silingan.entity.User;
+import com.ria.olita.tech.silingan.entity.UserCommunity;
 import com.ria.olita.tech.silingan.entity.UserCommunityStaffRole;
 import com.ria.olita.tech.silingan.entity.rbac.AccessLevel;
 import com.ria.olita.tech.silingan.entity.rbac.Domain;
 import com.ria.olita.tech.silingan.entity.rbac.PermissionEnum;
 import com.ria.olita.tech.silingan.entity.rbac.StaffRoleCode;
+import com.ria.olita.tech.silingan.exception.ForbiddenException;
 import com.ria.olita.tech.silingan.exception.NotFoundException;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityStaffRoleRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
+import com.ria.olita.tech.silingan.security.context.UserContext;
+import com.ria.olita.tech.silingan.security.context.UserContextHolder;
 import com.ria.olita.tech.silingan.security.scope.CommunityScopeGuard;
 import com.ria.olita.tech.silingan.security.scope.StaffGrantGuard;
 import com.ria.olita.tech.silingan.service.impl.CommunityRbacServiceImpl;
@@ -41,6 +50,11 @@ class CommunityRbacServiceImplTest {
 		communityRepository,
 		new StaffGrantGuard(new CommunityScopeGuard(userCommunityRepository))
 	);
+
+	@AfterEach
+	void tearDown() {
+		UserContextHolder.clear();
+	}
 
 	@Test
 	void roleCatalogReturnsTheFivePredefinedRolesWithCommunityAdminAsHighestAccess() {
@@ -125,6 +139,33 @@ class CommunityRbacServiceImplTest {
 			.thenReturn(Optional.empty());
 
 		assertThat(service.resolveEffectivePermissions(userId, communityId)).isEmpty();
+	}
+
+	@Test
+	void assignStaffRoleBlocksDowngradingCommunityAdmin() {
+		UUID communityId = UUID.randomUUID();
+		UUID targetUserId = UUID.randomUUID();
+
+		UserContextHolder.set(UserContext.builder()
+			.userId(UUID.randomUUID().toString())
+			.roles(List.of(SilinganRealmRole.PLATFORM_ADMIN))
+			.build());
+
+		Mockito.when(communityRepository.findById(communityId)).thenReturn(Optional.of(Community.builder().id(communityId).build()));
+		Mockito.when(userRepository.findById(targetUserId)).thenReturn(Optional.of(User.builder().id(targetUserId).build()));
+		Mockito.when(userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(targetUserId, communityId))
+			.thenReturn(Optional.of(UserCommunity.builder()
+				.role(SilinganRealmRole.COMMUNITY_ADMIN)
+				.active(true)
+				.build()));
+
+		assertThatThrownBy(() -> service.assignStaffRole(
+			communityId,
+			targetUserId,
+			new AssignStaffRoleRequest(StaffRoleCode.PMO_STAFF, true)
+		))
+			.isInstanceOf(ForbiddenException.class)
+			.hasMessageContaining("final active Community Admin");
 	}
 
 	private AccessLevel cell(PermissionMatrixResponse matrix, Domain module, StaffRoleCode roleCode) {

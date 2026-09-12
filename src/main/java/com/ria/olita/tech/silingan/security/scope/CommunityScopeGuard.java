@@ -81,6 +81,6 @@ public class CommunityScopeGuard {
 			throw new ForbiddenException("Invalid authenticated user context");
 		}
 
-		return userCommunityRepository.findByUserIdAndCommunityId(userId, communityId).isPresent();
+		return userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId).isPresent();
 	}
 }

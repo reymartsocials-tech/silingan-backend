@@ -14,6 +14,7 @@ import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.CommunityType;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.exception.ConflictException;
+import com.ria.olita.tech.silingan.exception.ForbiddenException;
 import com.ria.olita.tech.silingan.exception.NotFoundException;
 import com.ria.olita.tech.silingan.exception.ValidationException;
 import com.ria.olita.tech.silingan.mapper.AddressMapper;
@@ -204,6 +205,24 @@ public class CommunityServiceImpl implements CommunityService {
 
 	@Override
 	public void switchCommunity(UUID communityId) {
+		if (!UserContextHolder.isPlatformAdmin()) {
+			String currentUserId = UserContextHolder.get() != null ? UserContextHolder.get().userId() : null;
+			if (currentUserId == null) {
+				throw new ForbiddenException("No authenticated user context");
+			}
+
+			UUID userId;
+			try {
+				userId = UUID.fromString(currentUserId);
+			} catch (IllegalArgumentException ex) {
+				throw new ForbiddenException("Invalid authenticated user context");
+			}
+
+			if (userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId).isEmpty()) {
+				throw new ForbiddenException("You do not have access to this community");
+			}
+		}
+
 		keycloakService.updateUserAttributes(
 			UserContextHolder.get()
 				.keycloakUserId(),

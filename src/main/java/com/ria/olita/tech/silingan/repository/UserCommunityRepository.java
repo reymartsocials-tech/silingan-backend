@@ -17,16 +17,19 @@ public interface UserCommunityRepository extends JpaRepository<UserCommunity, UU
 
 	@Query("SELECT CASE WHEN COUNT(uc) > 0 THEN true ELSE false END " +
 			"FROM UserCommunity uc " +
-			"WHERE uc.community.id = :communityId AND uc.role = :role")
+			"WHERE uc.community.id = :communityId AND uc.role = :role AND uc.active = true")
 	boolean hasRoleInCommunity(UUID communityId, SilinganRealmRole role);
 
 	Optional<UserCommunity> findByUserIdAndCommunityId(UUID userId, UUID communityId);
+
+	Optional<UserCommunity> findByUserIdAndCommunityIdAndActiveTrue(UUID userId, UUID communityId);
 
 	@Query("""
 		SELECT uc
 		FROM UserCommunity uc
 		JOIN FETCH uc.user u
 		WHERE uc.community.id = :communityId
+			AND uc.active = true
 			AND uc.role IN :roles
 			AND (
 				:searchTerm IS NULL

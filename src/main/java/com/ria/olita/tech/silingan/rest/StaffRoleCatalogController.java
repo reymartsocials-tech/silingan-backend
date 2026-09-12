@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ria.olita.tech.silingan.dto.res.PermissionMatrixResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleResponse;
+import com.ria.olita.tech.silingan.entity.rbac.Action;
+import com.ria.olita.tech.silingan.entity.rbac.Domain;
+import com.ria.olita.tech.silingan.security.permission.RequiresPermission;
 import com.ria.olita.tech.silingan.service.CommunityRbacService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +39,7 @@ public class StaffRoleCatalogController {
 	private final CommunityRbacService communityRbacService;
 
 	@GetMapping
+	@RequiresPermission(domain = Domain.STAFF, action = Action.VIEW)
 	@Operation(
 		summary = "Get predefined role catalog",
 		description = "Returns the predefined staff roles with name, description, highest-access flag, and granted permissions."
@@ -50,6 +54,7 @@ public class StaffRoleCatalogController {
 	}
 
 	@GetMapping("/permissions")
+	@RequiresPermission(domain = Domain.STAFF, action = Action.VIEW)
 	@Operation(
 		summary = "Get permission matrix",
 		description = "Returns the permission matrix with roles as columns and modules as rows. Each cell is VIEW_AND_MANAGE, VIEW_ONLY, or NO_ACCESS."

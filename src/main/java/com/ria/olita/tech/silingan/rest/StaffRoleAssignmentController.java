@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.ria.olita.tech.silingan.dto.req.AssignStaffRoleRequest;
 import com.ria.olita.tech.silingan.dto.res.EffectivePermissionsResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleAssignmentResponse;
+import com.ria.olita.tech.silingan.entity.rbac.Action;
+import com.ria.olita.tech.silingan.entity.rbac.Domain;
+import com.ria.olita.tech.silingan.security.permission.RequiresPermission;
 import com.ria.olita.tech.silingan.service.CommunityRbacService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,13 +28,14 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/v1/communities/{communityId}/staff")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('COMMUNITY_ADMIN') or hasRole('PLATFORM_ADMIN')")
+@PreAuthorize("isAuthenticated()")
 @Tag(name = "Staff Role Assignment", description = "Assign community staff roles and inspect effective access")
 public class StaffRoleAssignmentController {
 
 	private final CommunityRbacService communityRbacService;
 
 	@PutMapping("/{userId}/role")
+	@RequiresPermission(domain = Domain.STAFF, action = Action.MANAGE)
 	@Operation(summary = "Assign or replace the staff role for a community member")
 	public ResponseEntity<StaffRoleAssignmentResponse> assignStaffRole(
 		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000")
@@ -44,6 +48,7 @@ public class StaffRoleAssignmentController {
 	}
 
 	@GetMapping("/{userId}/role")
+	@RequiresPermission(domain = Domain.STAFF, action = Action.VIEW)
 	@Operation(summary = "Get the assigned staff role for a community member")
 	public ResponseEntity<StaffRoleAssignmentResponse> getStaffRoleAssignment(
 		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000")
@@ -55,6 +60,7 @@ public class StaffRoleAssignmentController {
 	}
 
 	@GetMapping("/{userId}/effective-permissions")
+	@RequiresPermission(domain = Domain.STAFF, action = Action.VIEW)
 	@Operation(summary = "Get effective permissions for a community member")
 	public ResponseEntity<EffectivePermissionsResponse> getEffectivePermissions(
 		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000")

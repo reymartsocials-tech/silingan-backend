@@ -8,6 +8,7 @@ import java.util.UUID;
 import com.ria.olita.tech.silingan.dto.req.AssignStaffRoleRequest;
 import com.ria.olita.tech.silingan.dto.res.AvailablePermissionsResponse;
 import com.ria.olita.tech.silingan.dto.res.CurrentUserCapabilitiesResponse;
+import com.ria.olita.tech.silingan.dto.res.CurrentUserCommunityPermissionsResponse;
 import com.ria.olita.tech.silingan.dto.res.EffectivePermissionsResponse;
 import com.ria.olita.tech.silingan.dto.res.PermissionMatrixResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleAssignmentResponse;
@@ -30,6 +31,8 @@ public interface CommunityRbacService {
 	EffectivePermissionsResponse getEffectivePermissions(UUID communityId, UUID userId);
 
 	CurrentUserCapabilitiesResponse getCurrentUserCapabilities(UUID communityId);
+
+	List<CurrentUserCommunityPermissionsResponse> getCurrentUserCommunities();
 
 	Set<PermissionEnum> resolveEffectivePermissions(UUID userId, UUID communityId);
 

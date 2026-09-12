@@ -18,4 +18,6 @@ public interface UserCommunityStaffRoleRepository extends JpaRepository<UserComm
 	Optional<UserCommunityStaffRole> findByUserIdAndCommunityIdAndActiveTrue(UUID userId, UUID communityId);
 
 	List<UserCommunityStaffRole> findByCommunityIdAndUserIdInAndActiveTrue(UUID communityId, Collection<UUID> userIds);
+
+	List<UserCommunityStaffRole> findByUserIdAndCommunityIdInAndActiveTrue(UUID userId, Collection<UUID> communityIds);
 }

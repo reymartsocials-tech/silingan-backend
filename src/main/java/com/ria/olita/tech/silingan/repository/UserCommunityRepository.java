@@ -27,6 +27,16 @@ public interface UserCommunityRepository extends JpaRepository<UserCommunity, UU
 	@Query("""
 		SELECT uc
 		FROM UserCommunity uc
+		JOIN FETCH uc.community c
+		WHERE uc.user.id = :userId
+			AND uc.active = true
+		ORDER BY c.name
+		""")
+	List<UserCommunity> findActiveByUserIdWithCommunity(UUID userId);
+
+	@Query("""
+		SELECT uc
+		FROM UserCommunity uc
 		JOIN FETCH uc.user u
 		WHERE uc.community.id = :communityId
 			AND uc.active = true

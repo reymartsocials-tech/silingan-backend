@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import com.ria.olita.tech.silingan.dto.req.AssignStaffRoleRequest;
+import com.ria.olita.tech.silingan.dto.res.CurrentUserCommunityPermissionsResponse;
 import com.ria.olita.tech.silingan.dto.res.PermissionMatrixResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleResponse;
 import com.ria.olita.tech.silingan.entity.Community;
@@ -166,6 +167,52 @@ class CommunityRbacServiceImplTest {
 		))
 			.isInstanceOf(ForbiddenException.class)
 			.hasMessageContaining("final active Community Admin");
+	}
+
+	@Test
+	void currentUserCommunitiesReturnsActiveMembershipsWithEffectivePermissions() {
+		UUID userId = UUID.randomUUID();
+		UUID selectedCommunityId = UUID.randomUUID();
+		UUID otherCommunityId = UUID.randomUUID();
+
+		UserContextHolder.set(UserContext.builder()
+			.userId(userId.toString())
+			.communityId(selectedCommunityId.toString())
+			.roles(List.of(SilinganRealmRole.STAFF))
+			.build());
+
+		Community selectedCommunity = Community.builder()
+			.id(selectedCommunityId)
+			.communityCode("COMM-1")
+			.name("Community One")
+			.build();
+		Community otherCommunity = Community.builder()
+			.id(otherCommunityId)
+			.communityCode("COMM-2")
+			.name("Community Two")
+			.build();
+
+		Mockito.when(userCommunityRepository.findActiveByUserIdWithCommunity(userId)).thenReturn(List.of(
+			UserCommunity.builder().community(selectedCommunity).role(SilinganRealmRole.STAFF).active(true).build(),
+			UserCommunity.builder().community(otherCommunity).role(SilinganRealmRole.COMMUNITY_ADMIN).active(true).build()
+		));
+		Mockito.when(staffRoleAssignmentRepository.findByUserIdAndCommunityIdInAndActiveTrue(userId, List.of(selectedCommunityId, otherCommunityId)))
+			.thenReturn(List.of(
+				UserCommunityStaffRole.builder().communityId(selectedCommunityId).roleCode(StaffRoleCode.PMO_STAFF).active(true).build()
+			));
+
+		List<CurrentUserCommunityPermissionsResponse> responses = service.getCurrentUserCommunities();
+
+		assertThat(responses).hasSize(2);
+		assertThat(responses.get(0).communityId()).isEqualTo(selectedCommunityId);
+		assertThat(responses.get(0).selected()).isTrue();
+		assertThat(responses.get(0).roleCode()).isEqualTo(StaffRoleCode.PMO_STAFF);
+		assertThat(responses.get(0).permissions()).contains(PermissionEnum.STAFF_VIEW);
+
+		assertThat(responses.get(1).communityId()).isEqualTo(otherCommunityId);
+		assertThat(responses.get(1).selected()).isFalse();
+		assertThat(responses.get(1).roleCode()).isEqualTo(StaffRoleCode.COMMUNITY_ADMIN);
+		assertThat(responses.get(1).permissions()).contains(PermissionEnum.STAFF_MANAGE);
 	}
 
 	private AccessLevel cell(PermissionMatrixResponse matrix, Domain module, StaffRoleCode roleCode) {

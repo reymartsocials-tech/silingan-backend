@@ -1,6 +1,7 @@
 package com.ria.olita.tech.silingan.rest;
 
 import java.util.UUID;
+import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ria.olita.tech.silingan.dto.res.AvailablePermissionsResponse;
 import com.ria.olita.tech.silingan.dto.res.CurrentUserCapabilitiesResponse;
+import com.ria.olita.tech.silingan.dto.res.CurrentUserCommunityPermissionsResponse;
 import com.ria.olita.tech.silingan.service.CommunityRbacService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,10 +35,17 @@ public class CommunityRbacController {
 		return ResponseEntity.ok(communityRbacService.getPermissionCatalog());
 	}
 
-	@GetMapping("/me/communities/{communityId}/capabilities")
+	@GetMapping("/me/communities")
 	@PreAuthorize("isAuthenticated()")
-	@Operation(summary = "Get current user capabilities for a community")
-	public ResponseEntity<CurrentUserCapabilitiesResponse> getCurrentUserCapabilities(
+	@Operation(summary = "Get current user communities with effective permissions")
+	public ResponseEntity<List<CurrentUserCommunityPermissionsResponse>> getCurrentUserCommunities() {
+		return ResponseEntity.ok(communityRbacService.getCurrentUserCommunities());
+	}
+
+	@GetMapping("/communities/{communityId}/me/permissions")
+	@PreAuthorize("isAuthenticated()")
+	@Operation(summary = "Get current user permissions for a community")
+	public ResponseEntity<CurrentUserCapabilitiesResponse> getCurrentUserPermissions(
 		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000")
 		@PathVariable UUID communityId
 	) {

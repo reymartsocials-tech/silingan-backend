@@ -1,17 +1,15 @@
-# Keycloak 24 with PostgreSQL support for Render deployment
-FROM quay.io/keycloak/keycloak:24.0.5 as builder
-
-ENV KC_HEALTH_ENABLED=true
-ENV KC_METRICS_ENABLED=true
-ENV KC_DB=postgres
+FROM quay.io/keycloak/keycloak:26.5.6 as builder
 
 WORKDIR /opt/keycloak
 
-RUN /opt/keycloak/bin/kc.sh build --db=postgres
+COPY themes /opt/keycloak/themes
+COPY providers /opt/keycloak/providers
+COPY import /opt/keycloak/data/import
 
-FROM quay.io/keycloak/keycloak:24.0.5
+RUN /opt/keycloak/bin/kc.sh build
+
+FROM quay.io/keycloak/keycloak:26.5.6
 
 COPY --from=builder /opt/keycloak/ /opt/keycloak/
 
 ENTRYPOINT ["/opt/keycloak/bin/kc.sh"]
-CMD ["start", "--optimized", "--hostname-strict=false", "--proxy=edge", "--http-enabled=true"]

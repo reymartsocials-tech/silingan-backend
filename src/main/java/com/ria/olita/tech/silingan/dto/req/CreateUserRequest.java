@@ -2,6 +2,7 @@ package com.ria.olita.tech.silingan.dto.req;
 
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -13,7 +14,7 @@ import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 @Builder
 public record CreateUserRequest(
 	@Schema(example = "jdelacruz") String username,
-	@Schema(example = "juan@example.com") String email,
+	@Schema(example = "juan@example.com") @Email String email,
 	@Schema(example = "Juan") String firstName,
 	@Schema(example = "Dela Cruz") String lastName,
 	@Schema(example = "SecurePass123!") String password,

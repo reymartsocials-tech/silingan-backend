@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -34,8 +35,8 @@ import java.util.stream.Collectors;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.entity.rbac.CommunityAccess;
 import com.ria.olita.tech.silingan.entity.rbac.PermissionEnum;
-import com.ria.olita.tech.silingan.repository.UserCommunityPermissionRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
+import com.ria.olita.tech.silingan.service.CommunityRbacService;
 import com.ria.olita.tech.silingan.service.CommunityAdminInvitationActivationService;
 
 @Component
@@ -45,22 +46,23 @@ public class UserContextFilter extends OncePerRequestFilter {
 	private static final Logger log = LoggerFactory.getLogger(UserContextFilter.class);
 
 	private final UserRepository userRepository;
-	private final UserCommunityPermissionRepository permissionRepository;
+	private final CommunityRbacService communityRbacService;
 	private final CommunityAdminInvitationActivationService invitationActivationService;
 	private final EntityManager entityManager;
 
 	private static final Map<String, SilinganRealmRole> ROLE_MAP =
 		Arrays.stream(SilinganRealmRole.values())
 			.collect(Collectors.toMap(
-				r -> r.name().toLowerCase(),
+				r -> r.name()
+					.toLowerCase(),
 				Function.identity()
 			));
 
 
 	@Override
 	protected void doFilterInternal(@NonNull HttpServletRequest request,
-	                                @NonNull HttpServletResponse response,
-	                                FilterChain filterChain) throws ServletException, IOException {
+																	@NonNull HttpServletResponse response,
+																	FilterChain filterChain) throws ServletException, IOException {
 		try {
 			populateContextFromAuthentication();
 			enableCommunityFilter();
@@ -74,40 +76,40 @@ public class UserContextFilter extends OncePerRequestFilter {
 		Authentication authentication = SecurityContextHolder.getContext()
 			.getAuthentication();
 
-		String keycloakUserId = resolveKeycloakUserId(authentication);
-		if (keycloakUserId != null && !keycloakUserId.isBlank()) {
-			invitationActivationService.activateIfCompleted(keycloakUserId);
-		}
-
 		if (!(authentication instanceof JwtAuthenticationToken jwtAuth)) {
 			log.trace("Skipping UserContext population - authentication is not JwtAuthenticationToken");
 			return;
 		}
 
-		Map<String, Object> claims = jwtAuth.getToken()
-			.getClaims();
+		Map<String, Object> claims = jwtAuth.getToken().getClaims();
+		String keycloakUserId = extractStringClaim(claims, "sub");
+
 		if (keycloakUserId == null || keycloakUserId.isBlank()) {
-			keycloakUserId = extractStringClaim(claims, "keycloakId");
-			if (keycloakUserId == null || keycloakUserId.isBlank()) {
-				keycloakUserId = extractStringClaim(claims, "sub");
-			}
+			log.warn("Cannot populate UserContext - no sub claim in token");
+			return;
 		}
 
 		String userId = userRepository
 			.getUserIdByKeycloakUserId(keycloakUserId)
 			.orElse(null);
 		if (userId == null) {
-			log.trace("No local user found for keycloakUserId={}, skipping user context population", keycloakUserId);
+			log.warn("Cannot populate UserContext - no local user row for keycloakUserId={}", keycloakUserId);
 			return;
 		}
 
 		String communityId = extractStringClaim(claims, "communityId");
+		UUID communityUuid = parseCommunityId(communityId);
+
+		if (communityUuid != null) {
+			invitationActivationService.activateIfCompleted(keycloakUserId, communityUuid);
+		}
+
 		List<SilinganRealmRole> roles = extractRealmRoles(claims).stream()
 			.map(r -> ROLE_MAP.get(r.toLowerCase()))
 			.filter(Objects::nonNull)
 			.toList();
 
-		CommunityAccess communityAccess = loadCommunityAccess(userId, communityId);
+		CommunityAccess communityAccess = loadCommunityAccess(userId, communityUuid);
 
 		UserContext context = UserContext.builder()
 			.userId(userId)
@@ -121,42 +123,40 @@ public class UserContextFilter extends OncePerRequestFilter {
 
 	private String resolveKeycloakUserId(Authentication authentication) {
 		if (authentication instanceof JwtAuthenticationToken jwtAuth) {
-			Map<String, Object> claims = jwtAuth.getToken().getClaims();
-			String keycloakUserId = extractStringClaim(claims, "keycloakId");
-			return (keycloakUserId == null || keycloakUserId.isBlank())
-				? extractStringClaim(claims, "sub")
-				: keycloakUserId;
+			return extractStringClaim(jwtAuth.getToken().getClaims(), "sub");
 		}
 
 		if (authentication instanceof OAuth2AuthenticationToken oauth2Auth) {
 			if (oauth2Auth.getPrincipal() instanceof OidcUser oidcUser) {
-				Map<String, Object> claims = oidcUser.getClaims();
-				String keycloakUserId = extractStringClaim(claims, "keycloakId");
-				return (keycloakUserId == null || keycloakUserId.isBlank())
-					? extractStringClaim(claims, "sub")
-					: keycloakUserId;
+				return extractStringClaim(oidcUser.getClaims(), "sub");
 			}
-
 			if (oauth2Auth.getPrincipal() instanceof OAuth2User oauth2User) {
-				Map<String, Object> claims = oauth2User.getAttributes();
-				String keycloakUserId = extractStringClaim(claims, "keycloakId");
-				return (keycloakUserId == null || keycloakUserId.isBlank())
-					? extractStringClaim(claims, "sub")
-					: keycloakUserId;
+				return extractStringClaim(oauth2User.getAttributes(), "sub");
 			}
 		}
 
 		return null;
 	}
 
-	private CommunityAccess loadCommunityAccess(String userId, String communityId) {
+	private CommunityAccess loadCommunityAccess(String userId, UUID communityId) {
 		if (communityId == null) {
 			return null;
 		}
 		UUID userUuid = UUID.fromString(userId);
-		UUID communityUuid = UUID.fromString(communityId);
-		List<PermissionEnum> permissions = permissionRepository.findPermissionsByUserIdAndCommunityId(userUuid, communityUuid);
-		return new CommunityAccess(communityUuid, permissions);
+		Set<PermissionEnum> permissions = communityRbacService.resolveEffectivePermissions(userUuid, communityId);
+		return new CommunityAccess(communityId, permissions);
+	}
+
+	private UUID parseCommunityId(String communityIdClaim) {
+		if (communityIdClaim == null || communityIdClaim.isBlank()) {
+			return null;
+		}
+		try {
+			return UUID.fromString(communityIdClaim);
+		} catch (IllegalArgumentException ex) {
+			log.warn("Ignoring invalid communityId claim for user context: {}", communityIdClaim);
+			return null;
+		}
 	}
 
 	@SuppressWarnings("unchecked")
@@ -188,7 +188,9 @@ public class UserContextFilter extends OncePerRequestFilter {
 	private List<String> extractRealmRoles(Map<String, Object> claims) {
 		Object directRoles = claims.get("roles");
 		if (directRoles instanceof List<?> roleList) {
-			return roleList.stream().map(String::valueOf).toList();
+			return roleList.stream()
+				.map(String::valueOf)
+				.toList();
 		}
 
 		return Optional.ofNullable(claims.get("realm_access"))
@@ -199,7 +201,6 @@ public class UserContextFilter extends OncePerRequestFilter {
 			.map(list -> (List<String>) list)
 			.orElse(List.of());
 	}
-
 
 
 	private void enableCommunityFilter() {

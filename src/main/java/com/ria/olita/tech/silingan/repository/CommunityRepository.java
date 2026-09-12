@@ -15,18 +15,17 @@ import java.util.UUID;
 @Repository
 public interface CommunityRepository extends JpaRepository<Community, UUID> {
 
-	@Query("Select c from Community c where c.communityCode = ?1")
-	Optional<Community> findByCode(String code);
+	@Query("Select c from Community c where c.communityCode = ?1 AND c.status = ?2")
+	Optional<Community> findByCodeAndStatus(String code, CommunityStatus status);
 
-	@Query("select CASE WHEN COUNT(c) > 0 THEN TRUE ELSE FALSE END FROM Community c WHERE c.communityCode = ?1")
-	boolean existsByCode(String code);
+	@Query("select CASE WHEN COUNT(c) > 0 THEN TRUE ELSE FALSE END FROM Community c WHERE c.communityCode = ?1 AND c.status = ?2")
+	boolean existsByCodeAndStatus(String code, CommunityStatus status);
 
 	List<Community> findByStatus(CommunityStatus status);
 
 	List<Community> findByType(CommunityType type);
 
-	List<Community> findByStatusAndType(CommunityStatus status, CommunityType type);
 
-	@Query("SELECT c FROM Community c WHERE LOWER(c.name) LIKE LOWER(CONCAT('%', ?1, '%')) OR LOWER(c.communityCode) LIKE LOWER(CONCAT('%', ?2, '%'))")
-	List<Community> searchByCommunityNameOrCode(String name, String code);
+	@Query("SELECT c FROM Community c WHERE (LOWER(c.name) LIKE LOWER(CONCAT('%', ?1, '%')) OR LOWER(c.communityCode) LIKE LOWER(CONCAT('%', ?2, '%'))) AND c.status = ?3")
+	List<Community> searchByCommunityNameOrCodeAndStatus(String name, String code, CommunityStatus status);
 }

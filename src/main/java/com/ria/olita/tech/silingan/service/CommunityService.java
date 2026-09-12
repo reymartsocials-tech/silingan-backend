@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.UUID;
 
 public interface CommunityService {
-	boolean validate(String communityId);
 
 	CommunityResponse create(CreateCommunityRequest request);
 

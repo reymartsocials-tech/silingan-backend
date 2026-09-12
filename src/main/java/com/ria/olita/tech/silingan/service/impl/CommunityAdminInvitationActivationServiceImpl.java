@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -34,7 +35,7 @@ public class CommunityAdminInvitationActivationServiceImpl implements CommunityA
 
 	@Override
 	@Transactional
-	public void activateIfCompleted(String keycloakUserId) {
+	public void activateIfCompleted(String keycloakUserId, UUID communityId ) {
 		if (keycloakUserId == null || keycloakUserId.isBlank()) {
 			log.debug("Invitation activation skipped: missing keycloakUserId");
 			return;
@@ -42,9 +43,10 @@ public class CommunityAdminInvitationActivationServiceImpl implements CommunityA
 
 		log.debug("Invitation activation check triggered for keycloakUserId={}", keycloakUserId);
 
-		List<CommunityAdminInvitation> pendingInvitations = invitationRepository.findByKeycloakUserIdAndStatus(
+		List<CommunityAdminInvitation> pendingInvitations = invitationRepository.findByKeycloakUserIdAndStatusAndCommunityId(
 			keycloakUserId,
-			CommunityAdminInvitationStatus.PENDING
+			CommunityAdminInvitationStatus.PENDING,
+			communityId
 		);
 		if (pendingInvitations.isEmpty()) {
 			log.debug("Invitation activation skipped: no PENDING invitations for keycloakUserId={}", keycloakUserId);
@@ -92,7 +94,8 @@ public class CommunityAdminInvitationActivationServiceImpl implements CommunityA
 			.email(invitation.getEmail())
 			.build();
 		log.info("Creating local user record for accepted community admin invitation: {}", invitation.getEmail());
-		return userRepository.save(user);
+		user = userRepository.save(user);
+		return user;
 	}
 }
 

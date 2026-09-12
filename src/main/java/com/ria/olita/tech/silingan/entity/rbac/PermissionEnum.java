@@ -2,47 +2,53 @@ package com.ria.olita.tech.silingan.entity.rbac;
 
 public enum PermissionEnum {
 
-	COMMUNITY_VIEW("community:view"),
-	COMMUNITY_MANAGE("community:manage"),
+	COMMUNITY_VIEW(Domain.COMMUNITY, Action.VIEW),
+	COMMUNITY_MANAGE(Domain.COMMUNITY, Action.MANAGE),
 
-	RESIDENT_VIEW("resident:view"),
-	RESIDENT_MANAGE("resident:manage"),
+	RESIDENT_VIEW(Domain.RESIDENT, Action.VIEW),
+	RESIDENT_MANAGE(Domain.RESIDENT, Action.MANAGE),
 
-	STAFF_VIEW("staff:view"),
-	STAFF_MANAGE("staff:manage"),
+	STAFF_VIEW(Domain.STAFF, Action.VIEW),
+	STAFF_MANAGE(Domain.STAFF, Action.MANAGE),
 
-	ROLE_VIEW("role:view"),
-	ROLE_MANAGE("role:manage"),
+	ANNOUNCEMENT_VIEW(Domain.ANNOUNCEMENT, Action.VIEW),
+	ANNOUNCEMENT_MANAGE(Domain.ANNOUNCEMENT, Action.MANAGE),
 
-	ANNOUNCEMENT_VIEW("announcement:view"),
-	ANNOUNCEMENT_MANAGE("announcement:manage"),
+	REPORT_VIEW(Domain.REPORT, Action.VIEW),
+	REPORT_MANAGE(Domain.REPORT, Action.MANAGE),
 
-	REPORT_VIEW("report:view"),
-	REPORT_MANAGE("report:manage"),
+	DIRECTORY_VIEW(Domain.DIRECTORY, Action.VIEW),
+	DIRECTORY_MANAGE(Domain.DIRECTORY, Action.MANAGE),
 
-	DIRECTORY_VIEW("directory:view"),
-	DIRECTORY_MANAGE("directory:manage"),
+	SETTINGS_VIEW(Domain.SETTINGS, Action.VIEW),
+	SETTINGS_MANAGE(Domain.SETTINGS, Action.MANAGE);
 
-	DASHBOARD_VIEW("dashboard:view"),
+	private final Domain domain;
+	private final Action action;
 
-	NOTIFICATION_MANAGE("notification:manage"),
+	PermissionEnum(Domain domain, Action action) {
+		this.domain = domain;
+		this.action = action;
+	}
 
-	DOCUMENT_VIEW("document:view"),
-	DOCUMENT_MANAGE("document:manage");
+	public Domain getDomain() {
+		return domain;
+	}
 
-
-
-
-
-
-	private final String value;
-
-	PermissionEnum(String value) {
-		this.value = value;
+	public Action getAction() {
+		return action;
 	}
 
 	public String getValue() {
-		return value;
+		return domain.getValue() + ":" + action.value();
+	}
+
+	public static PermissionEnum of(Domain domain, Action action) {
+		for (PermissionEnum permission : values()) {
+			if (permission.domain == domain && permission.action == action) {
+				return permission;
+			}
+		}
+		throw new IllegalArgumentException("No permission for " + domain + ":" + action);
 	}
 }
-

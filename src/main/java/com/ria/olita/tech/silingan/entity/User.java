@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.hibernate.annotations.SQLRestriction;
 
 import com.ria.olita.tech.silingan.entity.base.BaseEntity;
+import com.ria.olita.tech.silingan.util.ContactNormalizer;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -17,6 +18,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -32,6 +35,11 @@ import lombok.ToString;
 	indexes = {
 		@Index(name = "idx_user_keycloak_id", columnList = "keycloak_user_id")
 	}
+	// Email/mobile uniqueness is enforced by the PARTIAL unique indexes
+	// uk_users_email_active / uk_users_mobile_number_active created in
+	// V1__baseline_schema.sql. They are scoped to WHERE deleted = false so a
+	// soft-deleted user does not permanently reserve their contact details --
+	// a semantic JPA's @UniqueConstraint cannot express.
 )
 @Getter
 @Setter
@@ -76,6 +84,17 @@ public class User extends BaseEntity {
 		return userCommunities.stream()
 			.map(UserCommunity::getCommunity)
 			.toList();
+	}
+
+	/**
+	 * Canonicalises contact details on every write so no code path can persist a value that would
+	 * slip past the unique constraints (e.g. "Juan@Example.com" or "0917-123-4567").
+	 */
+	@PrePersist
+	@PreUpdate
+	private void normalizeContactDetails() {
+		this.email = ContactNormalizer.normalizeEmail(this.email);
+		this.mobileNumber = ContactNormalizer.normalizeMobileNumber(this.mobileNumber);
 	}
 }
 

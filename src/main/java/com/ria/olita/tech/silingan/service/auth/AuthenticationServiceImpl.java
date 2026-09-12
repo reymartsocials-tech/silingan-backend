@@ -1,5 +1,6 @@
 package com.ria.olita.tech.silingan.service.auth;
 
+import com.ria.olita.tech.silingan.util.ContactNormalizer;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -76,17 +77,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 	}
 
 	private String normalizePhoneNumber(String phoneNumber) {
-		if (phoneNumber == null) {
-			return null;
-		}
-		String cleaned = phoneNumber.trim();
-		if (cleaned.startsWith("0")) {
-			return "+63" + cleaned.substring(1);
-		}
-		if (!cleaned.startsWith("+")) {
-			return "+" + cleaned;
-		}
-		return cleaned;
+		return ContactNormalizer.normalizeMobileNumber(phoneNumber);
 	}
 }
 

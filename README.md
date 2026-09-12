@@ -436,6 +436,89 @@ The `data.sql` file seeds the database with:
 
 Users in the seed data are pre-assigned to communities. When these users log in via OTP, their JWT will contain the `communityId` set in Keycloak.
 
+## Community Staff RBAC
+
+The backend supports **community-scoped RBAC** for staff accounts using a fixed catalogue of
+predefined roles.
+
+- Roles and the permission matrix are defined in code (`StaffRoleCatalog`) and are **read-only**
+- Staff role assignments are stored per user per community (`user_community_staff_roles`)
+- Custom roles, custom permissions, and per-community overrides are **not supported** for MVP
+
+### Predefined Roles
+
+| Role | Description |
+|------|-------------|
+| `COMMUNITY_ADMIN` | Full access to manage the community and staff (highest access) |
+| `PMO_STAFF` | Can manage announcements and reports |
+| `SECURITY_ADMIN` | Can view and manage security-related areas |
+| `MAINTENANCE_ADMIN` | Can view and manage maintenance-related areas |
+| `READ_ONLY_STAFF` | Can view information only |
+
+### Permission Matrix
+
+Each module resolves to one of `VIEW_AND_MANAGE`, `VIEW_ONLY`, or `NO_ACCESS`.
+
+| Module | Community Admin | PMO Staff | Security Admin | Maintenance Admin | Read-Only Staff |
+|--------|-----------------|-----------|----------------|-------------------|-----------------|
+| Community | View + Manage | View Only | View Only | View Only | View Only |
+| Residents | View + Manage | View Only | View Only | View Only | View Only |
+| Staff | View + Manage | View Only | View Only | View Only | View Only |
+| Announcements | View + Manage | View + Manage | View Only | View Only | View Only |
+| Reports | View + Manage | View + Manage | View + Manage | View + Manage | View Only |
+| Directory | View + Manage | View + Manage | View Only | View Only | View Only |
+| Settings | View + Manage | No Access | No Access | No Access | No Access |
+
+### Effective Permission Resolution
+
+For each `(userId, communityId)` the effective permissions are exactly the permissions of the
+user's **active** assigned predefined role. There are no overrides and no per-user grants, so what
+the matrix shows is always what is enforced.
+
+These effective permissions are loaded into `UserContext` and used by `@RequiresPermission`.
+
+### RBAC APIs
+
+#### Predefined Role Catalog & Permission Matrix (read-only)
+
+- `GET /api/v1/communities/{communityId}/roles`
+- `GET /api/v1/communities/{communityId}/roles/permissions`
+- `GET /api/v1/rbac/permissions`
+
+#### Staff Role Assignment
+
+- `PUT /api/v1/communities/{communityId}/staff/{userId}/role`
+- `GET /api/v1/communities/{communityId}/staff/{userId}/role`
+- `GET /api/v1/communities/{communityId}/staff/{userId}/effective-permissions`
+
+Example request:
+
+```json
+{
+  "roleCode": "PMO_STAFF",
+  "active": true
+}
+```
+
+#### Staff Directory
+
+- `GET /api/v1/communities/{communityId}/staff/directory`
+
+#### Current User Capabilities
+
+- `GET /api/v1/me/communities/{communityId}/capabilities`
+
+Example response:
+
+```json
+{
+  "userId": "550e8400-e29b-41d4-a716-446655440001",
+  "communityId": "550e8400-e29b-41d4-a716-446655440000",
+  "roleCode": "PMO_STAFF",
+  "permissions": ["ANNOUNCEMENT_VIEW", "ANNOUNCEMENT_MANAGE", "REPORT_VIEW", "REPORT_MANAGE"]
+}
+```
+
 ## Environment Variables Reference
 
 Configure these environment variables for different deployment environments:
@@ -501,4 +584,3 @@ For detailed information about authentication flows and JWT setup, see:
   - Data flow diagrams and code examples
   - Design decisions and rationale
   - Troubleshooting and future enhancements
-

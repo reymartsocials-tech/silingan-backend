@@ -1,6 +1,24 @@
 version: "3.9"
 
 services:
+  silingan-db:
+    image: postgres:16
+    container_name: silingan-app-db
+    environment:
+      POSTGRES_DB: silingan
+      POSTGRES_USER: silingan
+      POSTGRES_PASSWORD: silingan
+    # 5433 on the host: 5432 is commonly taken by a native Postgres install.
+    ports:
+      - "${SILINGAN_DB_PORT:-5433}:5432"
+    volumes:
+      - silingan-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U silingan -d silingan"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   postgres:
     image: postgres:16
     container_name: keycloak-postgres
@@ -36,3 +54,4 @@ services:
 
 volumes:
   pgdata:
+  silingan-pgdata:

@@ -255,6 +255,21 @@ public class KeycloakServiceImpl implements KeycloakService {
 	}
 
 	@Override
+	public boolean isUserEnabled(String keycloakUserId) {
+		Keycloak keycloak = getKeycloakClient();
+		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
+		UserRepresentation userRepresentation = realmResource.users()
+			.get(keycloakUserId)
+			.toRepresentation();
+
+		if (userRepresentation == null) {
+			throw new RuntimeException("User not found with ID: " + keycloakUserId);
+		}
+
+		return Boolean.TRUE.equals(userRepresentation.isEnabled());
+	}
+
+	@Override
 	public Optional<String> findUserIdByEmail(String email) {
 		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());

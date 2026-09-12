@@ -18,12 +18,13 @@ public interface CommunityAdminInvitationRepository extends JpaRepository<Commun
 
 	boolean existsByCommunityIdAndStatus(UUID communityId, CommunityAdminInvitationStatus status);
 
-	List<CommunityAdminInvitation> findByKeycloakUserIdAndStatus(String keycloakUserId, CommunityAdminInvitationStatus status);
+	List<CommunityAdminInvitation> findByKeycloakUserIdAndStatusAndCommunityId(String keycloakUserId, CommunityAdminInvitationStatus status, UUID communityId);
+
 
 	@Query("""
 		SELECT i
 		FROM CommunityAdminInvitation i
-		WHERE i.community.id = :communityId  AND  i.status = :status
+		WHERE i.communityId = :communityId  AND  i.status = :status
 		ORDER BY i.invitedAt DESC
 	""")
 	Page<CommunityAdminInvitation> findByFilters(

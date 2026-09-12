@@ -51,7 +51,7 @@ class CommunityAdminInvitationActivationServiceImplTest {
 
 		User user = User.builder().id(UUID.randomUUID()).keycloakUserId("kc-1").email("john.doe@company.com").build();
 
-		when(invitationRepository.findByKeycloakUserIdAndStatus("kc-1", CommunityAdminInvitationStatus.PENDING))
+		when(invitationRepository.findByKeycloakUserIdAndStatusAndCommunityId("kc-1", CommunityAdminInvitationStatus.PENDING,community.getId()))
 			.thenReturn(List.of(invitation));
 		when(keycloakService.isInvitationCompleted(eq("kc-1"), any()))
 			.thenReturn(true);
@@ -62,7 +62,7 @@ class CommunityAdminInvitationActivationServiceImplTest {
 		when(userCommunityRepository.findByUserIdAndCommunityId(user.getId(), communityId))
 			.thenReturn(Optional.empty());
 
-		service.activateIfCompleted("kc-1");
+		service.activateIfCompleted("kc-1",communityId);
 
 		verify(keycloakService).assignRealmRole("kc-1", SilinganRealmRole.COMMUNITY_ADMIN.name());
 		verify(userCommunityRepository).save(any(UserCommunity.class));
@@ -91,12 +91,12 @@ class CommunityAdminInvitationActivationServiceImplTest {
 			.status(CommunityAdminInvitationStatus.PENDING)
 			.build();
 
-		when(invitationRepository.findByKeycloakUserIdAndStatus("kc-1", CommunityAdminInvitationStatus.PENDING))
+		when(invitationRepository.findByKeycloakUserIdAndStatusAndCommunityId("kc-1", CommunityAdminInvitationStatus.PENDING, community.getId()))
 			.thenReturn(List.of(invitation));
 		when(keycloakService.isInvitationCompleted(eq("kc-1"), any()))
 			.thenReturn(false);
 
-		service.activateIfCompleted("kc-1");
+		service.activateIfCompleted("kc-1", community.getId());
 
 		verify(userCommunityRepository, never()).save(any(UserCommunity.class));
 		verify(userRepository, never()).save(any(User.class));

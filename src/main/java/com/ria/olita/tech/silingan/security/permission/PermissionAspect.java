@@ -14,21 +14,26 @@ import com.ria.olita.tech.silingan.entity.rbac.CommunityAccess;
 import com.ria.olita.tech.silingan.entity.rbac.Domain;
 import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
+import com.ria.olita.tech.silingan.security.scope.CommunityScopeGuard;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Aspect
 @Component
+@RequiredArgsConstructor
 @Slf4j
 public class PermissionAspect {
+
+	private final CommunityScopeGuard communityScopeGuard;
 
 	@Before("@annotation(requiresPermission)")
 	public void checkPermission(JoinPoint joinPoint, RequiresPermission requiresPermission) {
 		Domain domain = requiresPermission.domain();
 		Action action = requiresPermission.action();
 
-		if (UserContextHolder.isPlatformAdmin() || UserContextHolder.isCommunityAdmin()) {
-			log.debug("Admin access granted for {}:{}", domain, action);
+		if (UserContextHolder.isPlatformAdmin()) {
+			log.debug("Platform admin access granted for {}:{}", domain, action);
 			return;
 		}
 
@@ -38,6 +43,13 @@ public class PermissionAspect {
 		}
 
 		UUID communityId = extractCommunityId(joinPoint, user);
+
+		// A COMMUNITY_ADMIN realm role is not bound to a community; it only grants a bypass for
+		// communities the caller actually belongs to.
+		if (UserContextHolder.isCommunityAdmin() && communityScopeGuard.hasAccess(communityId)) {
+			log.debug("Community admin access granted for {}:{}", domain, action);
+			return;
+		}
 
 		if (UserContextHolder.isStaff()) {
 			CommunityAccess access = user.getAccess(communityId);

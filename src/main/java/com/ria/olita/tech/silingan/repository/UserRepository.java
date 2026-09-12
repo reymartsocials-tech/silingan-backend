@@ -15,6 +15,17 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
 	Optional<User> findByMobileNumber(String mobileNumber);
 
+	/**
+	 * Duplicate-account check for email.
+	 *
+	 * <p>Scoped to live rows so it agrees with the partial unique index
+	 * {@code uk_users_email_active}: a soft-deleted account must not block
+	 * re-registration with the same address.
+	 */
+	boolean existsByEmailAndDeletedFalse(String email);
+
+	/** Duplicate-account check for mobile number; mirrors {@code uk_users_mobile_number_active}. */
+	boolean existsByMobileNumberAndDeletedFalse(String mobileNumber);
 
 
 	@Query("""

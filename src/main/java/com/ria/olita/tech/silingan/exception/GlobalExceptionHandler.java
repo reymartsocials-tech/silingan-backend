@@ -3,9 +3,11 @@ package com.ria.olita.tech.silingan.exception;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -83,6 +85,43 @@ public class GlobalExceptionHandler {
 
 		return ResponseEntity
 			.status(HttpStatus.BAD_REQUEST)
+			.body(error);
+	}
+
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<ApiError> handleDataIntegrityViolation(
+		DataIntegrityViolationException ex,
+		HttpServletRequest request) {
+
+		// Message is deliberately generic: echoing the constraint name would disclose schema detail.
+		log.warn("Data integrity violation at {}: {}", request.getRequestURI(), ex.getMostSpecificCause().getMessage());
+
+		ApiError error = new ApiError(
+			"CONFLICT",
+			"The request conflicts with an existing record",
+			request.getRequestURI()
+		);
+
+		return ResponseEntity
+			.status(HttpStatus.CONFLICT)
+			.body(error);
+	}
+
+	@ExceptionHandler(AccessDeniedException.class)
+	public ResponseEntity<ApiError> handleAccessDenied(
+		AccessDeniedException ex,
+		HttpServletRequest request) {
+
+		log.warn("Access denied at {}: {}", request.getRequestURI(), ex.getMessage());
+
+		ApiError error = new ApiError(
+			"FORBIDDEN",
+			"Access denied",
+			request.getRequestURI()
+		);
+
+		return ResponseEntity
+			.status(HttpStatus.FORBIDDEN)
 			.body(error);
 	}
 

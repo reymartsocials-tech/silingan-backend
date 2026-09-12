@@ -81,17 +81,22 @@
 			<version>26.0.0</version>
 		</dependency>
 
-		<!-- H2 Database (Local Development) -->
-		<dependency>
-			<groupId>com.h2database</groupId>
-			<artifactId>h2</artifactId>
-			<scope>runtime</scope>
-		</dependency>
-
-		<!-- PostgreSQL Driver (Production/Test) -->
+		<!-- PostgreSQL Driver (all environments) -->
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
+		</dependency>
+
+		<!-- Flyway: owns the schema in every environment (see docs/DATABASE_MIGRATIONS.md).
+		     Spring Boot 4 splits autoconfiguration per module, so the starter (not the bare
+		     flyway-core artifact) is what activates FlywayAutoConfiguration. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
 
 		<!-- Test Dependencies -->

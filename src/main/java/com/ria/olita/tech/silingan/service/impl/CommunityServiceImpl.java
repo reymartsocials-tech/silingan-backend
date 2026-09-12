@@ -58,16 +58,6 @@ public class CommunityServiceImpl implements CommunityService {
 	private final KeycloakService keycloakService;
 	private final CommunityCodeService communityCodeService;
 
-	@Override
-	public boolean validate(String communityId) {
-		try {
-			UUID id = UUID.fromString(communityId);
-			return communityRepository.existsById(id);
-		} catch (IllegalArgumentException e) {
-			return communityRepository.findByCode(communityId)
-				.isPresent();
-		}
-	}
 
 	@Override
 	public CommunityResponse create(CreateCommunityRequest request) {
@@ -102,7 +92,7 @@ public class CommunityServiceImpl implements CommunityService {
 	@Override
 	@Transactional(readOnly = true)
 	public CommunityResponse getByCode(String code) {
-		Community community = communityRepository.findByCode(code)
+		Community community = communityRepository.findByCodeAndStatus(code, CommunityStatus.ACTIVE)
 			.orElseThrow(() -> new NotFoundException("Community code not found with code =" + code));
 		return communityMapper.toResponse(community);
 	}
@@ -307,7 +297,7 @@ public class CommunityServiceImpl implements CommunityService {
 		}
 
 		String trimmedSearchTerm = searchTerm.trim();
-		return communityRepository.searchByCommunityNameOrCode(trimmedSearchTerm, trimmedSearchTerm)
+		return communityRepository.searchByCommunityNameOrCodeAndStatus(trimmedSearchTerm, trimmedSearchTerm, CommunityStatus.ACTIVE)
 			.stream()
 			.map(communityMapper::toResponse)
 			.collect(Collectors.toList());

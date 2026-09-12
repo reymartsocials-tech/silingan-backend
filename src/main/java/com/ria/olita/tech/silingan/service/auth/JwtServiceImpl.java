@@ -42,6 +42,7 @@ public class JwtServiceImpl implements JwtService {
 			.claim("mobileNumber", user.getMobileNumber())
 			.claim("firstName", user.getFirstName())
 			.claim("lastName", user.getLastName())
+			.claim("email", user.getEmail())
 			.claim("roles", roles)
 			.claim("communityId", communityId)
 			.build();

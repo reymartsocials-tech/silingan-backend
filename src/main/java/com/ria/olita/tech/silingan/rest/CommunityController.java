@@ -256,14 +256,6 @@ public class CommunityController {
 		return ResponseEntity.ok(ApiResponse.success(response));
 	}
 
-	@GetMapping("/validate")
-	@Operation(summary = "Validate a community ID")
-	public ResponseEntity<ApiResponse<Boolean>> validate(
-		@Parameter(description = "Community ID to validate", example = "550e8400-e29b-41d4-a716-446655440000") @RequestParam String communityId) {
-		boolean isValid = communityService.validate(communityId);
-		return ResponseEntity.ok(ApiResponse.success(isValid));
-	}
-
 	@PutMapping("/switch/{communityId}")
 	@PreAuthorize("hasRole('RESIDENT')")
 	@Operation(summary = "Switch active community")

@@ -1,5 +1,6 @@
 package com.ria.olita.tech.silingan.service.otp;
 
+import com.ria.olita.tech.silingan.util.ContactNormalizer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -242,23 +243,7 @@ public class OtpService {
      * @return normalized phone number
      */
     private String normalizePhoneNumber(String phoneNumber) {
-        if (phoneNumber == null) {
-            return null;
-        }
-
-        String cleaned = phoneNumber.trim();
-
-        // Convert local format to international format
-        if (cleaned.startsWith("0")) {
-            return "+63" + cleaned.substring(1);
-        }
-
-        // Ensure it starts with +
-        if (!cleaned.startsWith("+")) {
-            return "+" + cleaned;
-        }
-
-        return cleaned;
+        return ContactNormalizer.normalizeMobileNumber(phoneNumber);
     }
 
     /**

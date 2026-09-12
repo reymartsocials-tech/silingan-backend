@@ -14,6 +14,7 @@ import com.ria.olita.tech.silingan.service.UserService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.validation.Valid;
 
 @RestController
 @Slf4j
@@ -25,7 +26,7 @@ public class UserController {
 
 	@PreAuthorize("hasRole('PLATFORM_ADMIN') or hasRole('COMMUNITY_ADMIN')")
 	@PostMapping
-	public ResponseEntity<Void> createUser(@RequestBody CreateUserRequest request) {
+	public ResponseEntity<Void> createUser(@Valid @RequestBody CreateUserRequest request) {
 		log.info("Create user request received for username: {}", request.username());
 		userService.createUser(request);
 		return ResponseEntity.status(HttpStatus.CREATED).build();

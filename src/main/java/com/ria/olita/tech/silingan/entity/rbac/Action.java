@@ -7,5 +7,8 @@ public enum Action {
 	public String value() {
 		return name().toLowerCase();
 	}
-}
 
+	public boolean canManage() {
+		return this == MANAGE;
+	}
+}

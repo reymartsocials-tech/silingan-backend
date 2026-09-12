@@ -8,7 +8,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.core.GrantedAuthority;
@@ -216,7 +215,6 @@ public class SecurityConfig {
 					"/swagger-ui/**",
 					"/swagger-resources/**",
 					"/webjars/**",
-					"/h2-console/**",
 					"/error"
 				)
 				.permitAll()
@@ -234,8 +232,10 @@ public class SecurityConfig {
 				)
 			)
 			.oauth2Login(Customizer.withDefaults())
-			.headers(headers -> headers
-				.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable));
+			// Frame options are left at the default DENY. They were previously disabled
+			// only so the H2 console could render in a frame; the application now runs on
+			// Postgres in every profile and H2 is gone, so clickjacking protection stays on.
+			.headers(Customizer.withDefaults());
 
 		http.addFilterAfter(userContextFilter, BearerTokenAuthenticationFilter.class);
 		http.addFilterAfter(otpVerificationFilter, UserContextFilter.class);

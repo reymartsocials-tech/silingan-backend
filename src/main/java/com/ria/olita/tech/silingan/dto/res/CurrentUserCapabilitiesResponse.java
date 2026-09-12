@@ -4,14 +4,12 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.ria.olita.tech.silingan.entity.rbac.PermissionEnum;
+import com.ria.olita.tech.silingan.entity.rbac.StaffRoleCode;
 
-public record StaffPermissionResponse(
+public record CurrentUserCapabilitiesResponse(
 	UUID userId,
-	String username,
-	String firstName,
-	String lastName,
 	UUID communityId,
+	StaffRoleCode roleCode,
 	Set<PermissionEnum> permissions
 ) {
 }
-

@@ -2,6 +2,7 @@ package com.ria.olita.tech.silingan.rest;
 
 import com.ria.olita.tech.silingan.dto.res.ApiResponse;
 import com.ria.olita.tech.silingan.dto.res.CommunityResponse;
+import com.ria.olita.tech.silingan.security.scope.SkipCommunityScopeCheck;
 import com.ria.olita.tech.silingan.service.CommunityService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,6 +24,7 @@ import java.util.List;
 @RequestMapping("/api/v1/public/communities")
 @RequiredArgsConstructor
 @Tag(name = "Public Community", description = "Public community lookup APIs")
+@SkipCommunityScopeCheck(reason = "Public community lookup does not require community scope")
 public class PublicCommunityController {
 
 	private final CommunityService communityService;

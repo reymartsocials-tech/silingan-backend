@@ -1,7 +1,7 @@
 package com.ria.olita.tech.silingan.entity.rbac;
 
 import java.util.EnumSet;
-import java.util.List;
+import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
 
@@ -13,7 +13,7 @@ public class CommunityAccess {
 	private final UUID communityId;
 	private final Set<PermissionEnum> permissions;
 
-	public CommunityAccess(UUID communityId, List<PermissionEnum> permissions) {
+	public CommunityAccess(UUID communityId, Collection<PermissionEnum> permissions) {
 		this.communityId = communityId;
 		this.permissions = EnumSet.noneOf(PermissionEnum.class);
 		if (permissions != null) {
@@ -32,4 +32,3 @@ public class CommunityAccess {
 			.anyMatch(p -> p.getValue().startsWith(domain.getValue() + ":"));
 	}
 }
-

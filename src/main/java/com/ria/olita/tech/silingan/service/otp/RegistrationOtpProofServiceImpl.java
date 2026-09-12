@@ -1,5 +1,6 @@
 package com.ria.olita.tech.silingan.service.otp;
 
+import com.ria.olita.tech.silingan.util.ContactNormalizer;
 import org.springframework.stereotype.Service;
 
 import com.github.benmanes.caffeine.cache.Cache;
@@ -36,24 +37,7 @@ public class RegistrationOtpProofServiceImpl implements RegistrationOtpProofServ
 	}
 
 	private String normalizePhoneNumber(String phoneNumber) {
-		if (phoneNumber == null) {
-			return null;
-		}
-
-		String cleaned = phoneNumber.trim();
-		if (cleaned.isBlank()) {
-			return null;
-		}
-
-		if (cleaned.startsWith("0")) {
-			return "+63" + cleaned.substring(1);
-		}
-
-		if (!cleaned.startsWith("+")) {
-			return "+" + cleaned;
-		}
-
-		return cleaned;
+		return ContactNormalizer.normalizeMobileNumber(phoneNumber);
 	}
 }
 

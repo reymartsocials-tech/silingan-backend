@@ -4,28 +4,43 @@ spring:
   profiles:
     # Default profile for local development
     # Override with SPRING_PROFILES_ACTIVE=prod for production
-    active: ${SPRING_PROFILES_ACTIVE:dev}
+    active: ${SPRING_PROFILES_ACTIVE:local}
 
   datasource:
-    url: jdbc:h2:file:./data/silingan-db;AUTO_SERVER=TRUE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    # Local development runs against the dockerised Postgres in docker-compose.yml
+    # (`docker compose up -d silingan-db`). Postgres rather than H2 so that local,
+    # dev and prod all run the exact same Flyway migrations -- partial unique
+    # indexes and other Postgres-specific DDL cannot be tested on H2.
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/silingan}
+    driver-class-name: org.postgresql.Driver
+    username: ${DATABASE_USERNAME:silingan}
+    password: ${DATABASE_PASSWORD:silingan}
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # Flyway owns the schema. Hibernate only asserts the entities match it.
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         session_factory:
           statement_inspector: com.ria.olita.tech.silingan.config.CommunityStatementInspector
-    defer-datasource-initialization: true
+    defer-datasource-initialization: false
+
+  flyway:
+    enabled: true
+    # Flyway owns the SCHEMA only. Seed data is handled by spring.sql.init below.
+    locations: classpath:db/migration
 
   sql:
     init:
-      mode: always
-      data-locations: classpath:data.sql
+      # No seed data by default: the staff role catalog is owned by code
+      # (StaffRoleCatalog), not by reference-data rows. The `local` profile
+      # document at the bottom of this file adds demo-data.sql; dev and prod
+      # never load it.
+      mode: never
+      # Fail the boot on a bad script rather than starting with partial data.
+      continue-on-error: false
 
   security:
     oauth2:
@@ -107,3 +122,20 @@ sms:
 
 
 
+
+# ============================================
+# Local-profile overrides
+# --------------------------------------------
+# Loads the demo fixtures. Kept in a profile-scoped document so demo-data.sql
+# is opt-in rather than opt-out and cannot leak into a shared environment by
+# default.
+# ============================================
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:db/data/demo-data.sql

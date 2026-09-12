@@ -16,6 +16,8 @@ public interface KeycloakService {
 
 	List<String> getRealmRoles(String keycloakUserId);
 
+	boolean isUserEnabled(String keycloakUserId);
+
 	Optional<String> findUserIdByEmail(String email);
 
 	void assignRealmRole(String keycloakUserId, String roleName);

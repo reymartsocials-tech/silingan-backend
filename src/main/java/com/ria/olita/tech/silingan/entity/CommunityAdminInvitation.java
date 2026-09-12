@@ -38,6 +38,9 @@ public class CommunityAdminInvitation {
 	@JoinColumn(name = "community_id", nullable = false)
 	private Community community;
 
+	@Column(name = "community_id", nullable = false, insertable = false, updatable = false)
+	private UUID communityId;
+
 	@Column(nullable = false)
 	private String email;
 

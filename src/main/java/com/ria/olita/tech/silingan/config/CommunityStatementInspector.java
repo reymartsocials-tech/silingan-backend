@@ -41,7 +41,8 @@ public class CommunityStatementInspector implements StatementInspector {
 	private boolean isCommunityScopedTable(String sql) {
 		return sql.contains("announcements")
 									|| sql.contains("issues")
-									|| sql.contains("media");
+									|| sql.contains("media")
+									|| sql.contains("community_admin_invitations");
 	}
 
 	private boolean hasCommunityFilter(String sql) {

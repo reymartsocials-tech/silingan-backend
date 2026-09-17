@@ -18,6 +18,7 @@ spring:
   jpa:
     hibernate:
       # Flyway owns the schema. Hibernate only asserts the entities match it.
+      # Local profile overrides this to 'create-drop' (see bottom of file).
       ddl-auto: validate
     show-sql: true
     properties:
@@ -135,6 +136,13 @@ spring:
   config:
     activate:
       on-profile: local
+  jpa:
+    hibernate:
+      # Use Hibernate to create/drop schema locally (Flyway disabled below)
+      ddl-auto: create-drop
+  flyway:
+    # Disable Flyway for local profile - Hibernate manages schema
+    enabled: false
   sql:
     init:
       mode: always

@@ -77,9 +77,8 @@ public class OtpController {
 		@Valid @RequestBody OtpRequest request,
 		HttpServletRequest httpRequest) {
 		log.debug("Registration OTP request received");
-		String ipAddress = getClientIpAddress(httpRequest);
 		String userAgent = httpRequest.getHeader("User-Agent");
-		return ResponseEntity.ok(otpService.requestOtp(request, ipAddress, userAgent));
+		return ResponseEntity.ok(otpService.requestOtp(request, userAgent));
 	}
 
 	@PostMapping("/verify-registration")
@@ -95,22 +94,9 @@ public class OtpController {
 		@Valid @RequestBody OtpVerifyRequest request,
 		HttpServletRequest httpRequest) {
 		log.debug("Registration OTP verification received");
-		String ipAddress = getClientIpAddress(httpRequest);
 		String userAgent = httpRequest.getHeader("User-Agent");
-		OtpResponse response = otpService.verifyOtp(request, ipAddress, userAgent);
+		OtpResponse response = otpService.verifyOtp(request, userAgent);
 		registrationOtpProofService.markVerifiedForRegistration(request.getMobileNumber());
 		return ResponseEntity.ok(response);
-	}
-
-	private String getClientIpAddress(HttpServletRequest request) {
-		String xForwardedFor = request.getHeader("X-Forwarded-For");
-		if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-			return xForwardedFor.split(",")[0].trim();
-		}
-		String xRealIp = request.getHeader("X-Real-IP");
-		if (xRealIp != null && !xRealIp.isEmpty()) {
-			return xRealIp;
-		}
-		return request.getRemoteAddr();
 	}
 }

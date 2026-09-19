@@ -52,6 +52,7 @@ class JwtServiceImplTest {
 			.mobileNumber("+639171234567")
 			.firstName("John")
 			.lastName("Doe")
+			.email("+639171234567"+"@silingan.com")
 			.build();
 
 		UUID communityId = UUID.randomUUID();

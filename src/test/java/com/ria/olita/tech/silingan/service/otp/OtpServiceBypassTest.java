@@ -26,28 +26,27 @@ class OtpServiceBypassTest {
     void shouldVerifyAnyOtpWhenSmsBypassEnabledAndChallengeExists() {
         OtpService service = buildService(true);
 
-        service.requestOtp(new OtpRequest("+639171234567"), "127.0.0.1", "junit");
+        service.requestOtp(new OtpRequest("+639171234567"), "junit");
 
         OtpResponse response = service.verifyOtp(
                 new OtpVerifyRequest("+639171234567", "000000"),
-                "127.0.0.1",
                 "junit");
 
         assertThat(response.getMessage()).isEqualTo("OTP verified successfully");
 
         // Proof that OTP remains single-use even in bypass mode.
         assertThrows(ExpiredOtpException.class,
-                () -> service.verifyOtp(new OtpVerifyRequest("+639171234567", "111111"), "127.0.0.1", "junit"));
+                () -> service.verifyOtp(new OtpVerifyRequest("+639171234567", "111111"), "junit"));
     }
 
     @Test
     void shouldStillFailInvalidOtpWhenSmsBypassDisabled() {
         OtpService service = buildService(false);
 
-        service.requestOtp(new OtpRequest("+639171234567"), "127.0.0.1", "junit");
+        service.requestOtp(new OtpRequest("+639171234567"), "junit");
 
         assertThrows(InvalidOtpException.class,
-                () -> service.verifyOtp(new OtpVerifyRequest("+639171234567", "000000"), "127.0.0.1", "junit"));
+                () -> service.verifyOtp(new OtpVerifyRequest("+639171234567", "000000"), "junit"));
     }
 
     private OtpService buildService(boolean bypassSending) {
@@ -70,8 +69,8 @@ class OtpServiceBypassTest {
         OtpService service = new OtpService(otpProperties, smsProperties, otpCache, cooldownCache, smsService, auditService);
 
         // Ensure request flow still audits and uses the transport service.
-        service.requestOtp(new OtpRequest("+639171234568"), "127.0.0.1", "junit");
-        verify(auditService).logOtpRequested("+639171234568", "127.0.0.1", "junit");
+        service.requestOtp(new OtpRequest("+639171234568"), "junit");
+        verify(auditService).logOtpRequested("+639171234568", "junit");
 
         return service;
     }

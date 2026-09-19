@@ -36,7 +36,6 @@ public class OtpHandlerServiceImpl implements OtpHandlerService {
 
 		var response = otpService.requestOtp(
 			OtpRequest.builder().mobileNumber(principal.mobileNumber()).build(),
-			getClientIpAddress(request),
 			request.getHeader("User-Agent")
 		);
 
@@ -52,7 +51,6 @@ public class OtpHandlerServiceImpl implements OtpHandlerService {
 				.mobileNumber(principal.mobileNumber())
 				.otp(otp)
 				.build(),
-			getClientIpAddress(request),
 			request.getHeader("User-Agent")
 		);
 

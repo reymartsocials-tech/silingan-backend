@@ -29,12 +29,11 @@ class OtpControllerTest {
                 .otp("123456")
                 .build();
 
-        when(otpService.verifyOtp(Mockito.eq(request), Mockito.anyString(), Mockito.anyString()))
+        when(otpService.verifyOtp(Mockito.eq(request), Mockito.anyString()))
                 .thenReturn(OtpResponse.verified());
 
         MockHttpServletRequest httpRequest = new MockHttpServletRequest();
         httpRequest.addHeader("User-Agent", "junit");
-        httpRequest.setRemoteAddr("127.0.0.1");
 
         controller.verifyOtpLegacy(request, httpRequest);
 

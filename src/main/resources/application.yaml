@@ -2,15 +2,9 @@ spring:
   application:
     name: silingan
   profiles:
-    # Default profile for local development
-    # Override with SPRING_PROFILES_ACTIVE=prod for production
     active: ${SPRING_PROFILES_ACTIVE:local}
 
   datasource:
-    # Local development runs against the dockerised Postgres in docker-compose.yml
-    # (`docker compose up -d silingan-db`). Postgres rather than H2 so that local,
-    # dev and prod all run the exact same Flyway migrations -- partial unique
-    # indexes and other Postgres-specific DDL cannot be tested on H2.
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/silingan}
     driver-class-name: org.postgresql.Driver
     username: ${DATABASE_USERNAME:silingan}
@@ -35,12 +29,7 @@ spring:
 
   sql:
     init:
-      # No seed data by default: the staff role catalog is owned by code
-      # (StaffRoleCatalog), not by reference-data rows. The `local` profile
-      # document at the bottom of this file adds demo-data.sql; dev and prod
-      # never load it.
       mode: never
-      # Fail the boot on a bad script rather than starting with partial data.
       continue-on-error: false
 
   security:
@@ -147,3 +136,4 @@ spring:
     init:
       mode: always
       data-locations: classpath:db/data/demo-data.sql
+

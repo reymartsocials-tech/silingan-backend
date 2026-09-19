@@ -51,6 +51,17 @@ public class UserServiceImpl implements UserService {
 	}
 
 	private CreatedUserResponse createUserInternal(CreateUserRequest request) {
+		// Auto-generate username from mobile number if not provided
+		if (request.username() == null || request.username().isBlank()) {
+			request = request.withUsername(request.mobileNumber());
+		}
+		
+		// Auto-generate email from mobile number if not provided
+		if (request.email() == null || request.email().isBlank()) {
+			String generatedEmail = request.mobileNumber().replaceAll("[^0-9]", "") + "@silingan.com";
+			request = request.withEmail(generatedEmail);
+		}
+		
 		log.info("Registering user in kc and in db: {}", request.username());
 
 		String email = ContactNormalizer.normalizeEmail(request.email());
@@ -81,6 +92,7 @@ public class UserServiceImpl implements UserService {
 			.build();
 
 		user.addCommunity(userCommunity);
+		user.setLastSelectedCommunity(communityEntity);
 
 		try {
 			userRepository.saveAndFlush(user);
@@ -111,5 +123,19 @@ public class UserServiceImpl implements UserService {
 		if (mobileNumber != null && userRepository.existsByMobileNumberAndDeletedFalse(mobileNumber)) {
 			throw new ConflictException("Mobile number is already registered");
 		}
+	}
+
+	@Override
+	public void updateUserSelectedCommunity(String mobileNumber, String communityCode) {
+		String normalizedMobileNumber = ContactNormalizer.normalizeMobileNumber(mobileNumber);
+		User user = userRepository.findByMobileNumber(normalizedMobileNumber)
+			.orElseThrow(() -> new ForbiddenException("User not found"));
+
+		Community community = communityRepository.findByCodeAndStatus(communityCode, com.ria.olita.tech.silingan.entity.CommunityStatus.ACTIVE)
+			.orElseThrow(() -> new ForbiddenException("Community not found"));
+
+		user.setLastSelectedCommunity(community);
+		userRepository.saveAndFlush(user);
+		log.info("Updated selected community for user {} to {}", normalizedMobileNumber, communityCode);
 	}
 }

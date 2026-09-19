@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import com.ria.olita.tech.silingan.config.SmsProperties;
 
 import jakarta.annotation.PostConstruct;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -27,7 +28,14 @@ public class SmsService {
     private final SmsProperties smsProperties;
     private final List<SmsProvider> providers;
     private Map<String, SmsProvider> providerMap;
-    private SmsProvider activeProvider;
+	/**
+	 * -- GETTER --
+	 *  Gets the currently active SMS provider.
+	 *
+	 * @return the active provider, or null if none available
+	 */
+	@Getter
+	private SmsProvider activeProvider;
 
     @PostConstruct
     void init() {
@@ -82,45 +90,6 @@ public class SmsService {
 
         log.debug("Sending OTP to {} via {}", maskPhoneNumber(phoneNumber), activeProvider.getProviderName());
         return activeProvider.sendOtp(phoneNumber, otp);
-    }
-
-    /**
-     * Sends a generic SMS message.
-     *
-     * @param phoneNumber the recipient's phone number
-     * @param message     the message content
-     * @return true if sent successfully
-     */
-    public boolean sendSms(String phoneNumber, String message) {
-        if (smsProperties.isBypassSending()) {
-            log.warn("SMS bypass is enabled; skipping SMS send to {}", maskPhoneNumber(phoneNumber));
-            return true;
-        }
-
-        if (activeProvider == null) {
-            log.error("No SMS provider available to send SMS");
-            return false;
-        }
-
-        return activeProvider.sendSms(phoneNumber, message);
-    }
-
-    /**
-     * Gets the currently active SMS provider.
-     *
-     * @return the active provider, or null if none available
-     */
-    public SmsProvider getActiveProvider() {
-        return activeProvider;
-    }
-
-    /**
-     * Checks if SMS service is properly configured and ready.
-     *
-     * @return true if service is ready to send SMS
-     */
-    public boolean isReady() {
-        return activeProvider != null && activeProvider.isConfigured();
     }
 
     /**

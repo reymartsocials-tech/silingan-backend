@@ -47,7 +47,7 @@ public class OtpData {
      * Checks if the maximum number of attempts has been exceeded.
      *
      * @param maxAttempts maximum allowed attempts
-     * @return true if attempts exceed the limit
+     * @return true if attempts to exceed the limit
      */
     public boolean hasExceededAttempts(int maxAttempts) {
         return attemptCount >= maxAttempts;

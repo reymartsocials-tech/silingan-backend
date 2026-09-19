@@ -26,7 +26,6 @@ public class OtpAuditEvent {
     private final EventType eventType;
     private final String mobileNumber;
     private final Instant timestamp;
-    private final String ipAddress;
     private final String userAgent;
     private final Integer attemptNumber;
     private final String failureReason;

@@ -14,11 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
-import org.keycloak.admin.client.resource.GroupsResource;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
-import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -64,8 +62,10 @@ public class KeycloakServiceImpl implements KeycloakService {
 		// Create user representation
 		UserRepresentation user = new UserRepresentation();
 		user.setUsername(request.username());
-		user.setEmail(request.email());
-		user.setFirstName(request.firstName());
+		if (request.email() != null && !request.email().isBlank()) {
+			user.setEmail(request.email());
+			user.setEmailVerified(request.emailVerified());
+		}		user.setFirstName(request.firstName());
 		user.setLastName(request.lastName());
 		user.setEnabled(request.enabled());
 		user.setEmailVerified(request.emailVerified());
@@ -88,7 +88,6 @@ public class KeycloakServiceImpl implements KeycloakService {
 			log.info("User created successfully with ID: {}", userId);
 
 			Map<String, List<String>> keycloakAttributes = new HashMap<>();
-			keycloakAttributes.put("communityId", List.of(communityId.toString()));
 			keycloakAttributes.put("mobileNumber", List.of(request.mobileNumber()));
 			keycloakAttributes.put("mobile_number_verified", List.of("true"));
 			updateUserAttributes(userId, keycloakAttributes);
@@ -110,36 +109,6 @@ public class KeycloakServiceImpl implements KeycloakService {
 			String errorMessage = "Failed to create user. Status: " + response.getStatus();
 			log.error(errorMessage);
 			throw new RuntimeException(errorMessage);
-		}
-	}
-
-	private void addUserToCommunityGroup(RealmResource realmResource, String userId, String communityCode) {
-		log.info("Adding user {} to community group: {}", userId, communityCode);
-
-		try {
-			GroupsResource groupsResource = realmResource.groups();
-
-			List<GroupRepresentation> groups = groupsResource.groups(communityCode, 0, 1, true);
-
-			if (groups == null || groups.isEmpty()) {
-				throw new RuntimeException("Group not found for community code: " + communityCode);
-			}
-
-			String groupId = groups.get(0)
-				.getId();
-
-			log.info("Found group {} for communityCode {}", groupId, communityCode);
-
-			UserResource userResource = realmResource.users()
-				.get(userId);
-
-			userResource.joinGroup(groupId);
-
-			log.info("User {} successfully added to group {}", userId, communityCode);
-
-		} catch (Exception e) {
-			log.error("Error adding user to community group: {}", e.getMessage(), e);
-			throw new RuntimeException("Failed to add user to community group: " + communityCode, e);
 		}
 	}
 

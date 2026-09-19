@@ -7,7 +7,7 @@ import com.ria.olita.tech.silingan.dto.res.LoginResponse;
 
 public interface AuthenticationService {
 
-	LoginResponse loginWithOtp(OtpVerifyRequest request, String ipAddress, String userAgent);
+	LoginResponse loginWithOtp(OtpVerifyRequest request,String userAgent);
 
 	LoginResponse issueTokenForMobile(String mobileNumber, UUID communityId);
 }

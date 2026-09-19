@@ -29,12 +29,11 @@ public class OtpAuditService {
     /**
      * Logs an OTP request event.
      */
-    public void logOtpRequested(String mobileNumber, String ipAddress, String userAgent) {
+    public void logOtpRequested(String mobileNumber, String userAgent) {
         OtpAuditEvent event = OtpAuditEvent.builder()
                 .eventType(EventType.OTP_REQUESTED)
                 .mobileNumber(mobileNumber)
                 .timestamp(Instant.now())
-                .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .build();
         logEvent(event);
@@ -68,12 +67,11 @@ public class OtpAuditService {
     /**
      * Logs a successful OTP verification event.
      */
-    public void logVerificationSuccess(String mobileNumber, String ipAddress, String userAgent) {
+    public void logVerificationSuccess(String mobileNumber, String userAgent) {
         OtpAuditEvent event = OtpAuditEvent.builder()
                 .eventType(EventType.OTP_VERIFICATION_SUCCESS)
                 .mobileNumber(mobileNumber)
                 .timestamp(Instant.now())
-                .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .build();
         logEvent(event);
@@ -82,13 +80,12 @@ public class OtpAuditService {
     /**
      * Logs a failed OTP verification event.
      */
-    public void logVerificationFailed(String mobileNumber, int attemptNumber, String ipAddress, String userAgent) {
+    public void logVerificationFailed(String mobileNumber, int attemptNumber, String userAgent) {
         OtpAuditEvent event = OtpAuditEvent.builder()
                 .eventType(EventType.OTP_VERIFICATION_FAILED)
                 .mobileNumber(mobileNumber)
                 .timestamp(Instant.now())
                 .attemptNumber(attemptNumber)
-                .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .build();
         logEvent(event);
@@ -97,12 +94,11 @@ public class OtpAuditService {
     /**
      * Logs when max OTP attempts are exceeded.
      */
-    public void logMaxAttemptsExceeded(String mobileNumber, String ipAddress, String userAgent) {
+    public void logMaxAttemptsExceeded(String mobileNumber, String userAgent) {
         OtpAuditEvent event = OtpAuditEvent.builder()
                 .eventType(EventType.OTP_MAX_ATTEMPTS_EXCEEDED)
                 .mobileNumber(mobileNumber)
                 .timestamp(Instant.now())
-                .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .build();
         logEvent(event);
@@ -111,12 +107,11 @@ public class OtpAuditService {
     /**
      * Logs when a request is blocked due to cooldown.
      */
-    public void logCooldownBlocked(String mobileNumber, String ipAddress, String userAgent) {
+    public void logCooldownBlocked(String mobileNumber, String userAgent) {
         OtpAuditEvent event = OtpAuditEvent.builder()
                 .eventType(EventType.OTP_COOLDOWN_BLOCKED)
                 .mobileNumber(mobileNumber)
                 .timestamp(Instant.now())
-                .ipAddress(ipAddress)
                 .userAgent(userAgent)
                 .build();
         logEvent(event);
@@ -132,10 +127,9 @@ public class OtpAuditService {
             MDC.put("otp_event_type", event.getEventType().name());
             MDC.put("mobile_number", event.getMaskedMobileNumber());
             MDC.put("event_timestamp", event.getTimestamp().toString());
-            MDC.put("client_ip", maskIpAddress(event.getIpAddress()));
-            
+
             if (event.getUserAgent() != null) {
-                MDC.put("user_agent", truncate(event.getUserAgent(), 100));
+                MDC.put("user_agent", truncate(event.getUserAgent()));
             }
             if (event.getAttemptNumber() != null) {
                 MDC.put("attempt_number", event.getAttemptNumber().toString());
@@ -171,21 +165,12 @@ public class OtpAuditService {
         }
     }
 
-    private String maskIpAddress(String ipAddress) {
-        if (ipAddress == null) {
-            return "N/A";
-        }
-        if (ipAddress.contains(".")) {
-            int lastDot = ipAddress.lastIndexOf('.');
-            return ipAddress.substring(0, lastDot) + ".***";
-        }
-        return ipAddress;
-    }
 
-    private String truncate(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
+
+    private String truncate(String value) {
+        if (value == null || value.length() <= 100) {
             return value;
         }
-        return value.substring(0, maxLength) + "...";
+        return value.substring(0, 100) + "...";
     }
 }

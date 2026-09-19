@@ -50,13 +50,50 @@ public record CreateUserRequest(
 		);
 	}
 
+	public CreateUserRequest withUsername(String username) {
+		return new CreateUserRequest(
+			username,
+			this.email,
+			this.firstName,
+			this.lastName,
+			this.password,
+			this.mobileNumber,
+			this.enabled,
+			this.emailVerified,
+			this.communityRole,
+			this.communityCode,
+			this.address
+		);
+	}
+
+	public CreateUserRequest withEmail(String email) {
+		return new CreateUserRequest(
+			this.username,
+			email,
+			this.firstName,
+			this.lastName,
+			this.password,
+			this.mobileNumber,
+			this.enabled,
+			this.emailVerified,
+			this.communityRole,
+			this.communityCode,
+			this.address
+		);
+	}
+
 	public CreateUserRequest {
 		// Set defaults if null
 		if (enabled == null) {
 			enabled = true;
 		}
 		if (emailVerified == null) {
-			emailVerified = false;
+			// Only auto-verify email if it's null/auto-generated and user is RESIDENT
+			if (email == null || email.isBlank()) {
+				emailVerified = (communityRole == null || communityRole == SilinganRealmRole.RESIDENT);
+			} else {
+				emailVerified = false;
+			}
 		}
 	}
 

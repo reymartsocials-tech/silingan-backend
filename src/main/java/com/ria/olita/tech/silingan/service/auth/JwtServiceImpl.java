@@ -32,7 +32,7 @@ public class JwtServiceImpl implements JwtService {
 		Instant issuedAt = Instant.now();
 		Instant expiresAt = issuedAt.plusSeconds(jwtProperties.getAccessTokenTtlSeconds());
 
-		JwtClaimsSet claimsSet = JwtClaimsSet.builder()
+		var builder = JwtClaimsSet.builder()
 			.subject(user.getId().toString())
 			.issuer(jwtProperties.getIssuer())
 			.issuedAt(issuedAt)
@@ -43,9 +43,13 @@ public class JwtServiceImpl implements JwtService {
 			.claim("firstName", user.getFirstName())
 			.claim("lastName", user.getLastName())
 			.claim("email", user.getEmail())
-			.claim("roles", roles)
-			.claim("communityId", communityId)
-			.build();
+			.claim("roles", roles);
+		
+		if (communityId != null) {
+			builder.claim("communityId", communityId);
+		}
+		
+		JwtClaimsSet claimsSet = builder.build();
 
 		JwsHeader jwsHeader = JwsHeader.with(MacAlgorithm.HS256).build();
 		return jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claimsSet)).getTokenValue();

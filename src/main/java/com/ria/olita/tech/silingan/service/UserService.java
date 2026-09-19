@@ -9,4 +9,6 @@ public interface UserService {
 	void createUser(CreateUserRequest createUserRequest);
 
 	CreatedUserResponse createSelfServiceUser(CreateUserRequest createUserRequest);
+
+	void updateUserSelectedCommunity(String mobileNumber, String communityCode);
 }

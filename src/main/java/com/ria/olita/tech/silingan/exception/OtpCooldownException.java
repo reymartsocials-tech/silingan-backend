@@ -11,8 +11,5 @@ public class OtpCooldownException extends ServiceException {
         super(CODE, String.format("Please wait %d seconds before requesting a new OTP", remainingSeconds));
     }
 
-    public OtpCooldownException(String message) {
-        super(CODE, message);
-    }
 }
 

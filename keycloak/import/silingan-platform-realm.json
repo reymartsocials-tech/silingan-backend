@@ -66,7 +66,7 @@
       "publicClient": false,
       "secret": "N8fhpvahIwkPdmMFLrHTdsZi89CnBOap",
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "implicitFlowEnabled": false,
       "fullScopeAllowed": true,
@@ -85,6 +85,7 @@
       "baseUrl": "http://localhost:8082",
       "adminUrl": "http://localhost:8082",
       "defaultClientScopes": [
+        "openid",
         "web-origins",
         "acr",
         "profile",
@@ -96,6 +97,57 @@
         "phone",
         "offline_access",
         "microprofile-jwt"
+      ],
+      "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "communityId",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "communityId",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "communityId",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "kc-platform-admin-001",
+      "username": "platform_admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "email": "admin@silingan.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "communityId": "20000000-0000-0000-0000-000000000001"
+      },
+      "realmRoles": [
+        "PLATFORM_ADMIN"
       ]
     }
   ]

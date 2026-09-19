@@ -40,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 public class OtpService {
 
     private static final Logger log = LoggerFactory.getLogger(OtpService.class);
+    private static final String TEST_MOBILE_NUMBER = "+639999999999";  // Test number that bypasses SMS
 
     private final OtpProperties otpProperties;
     private final SmsProperties smsProperties;
@@ -53,22 +54,21 @@ public class OtpService {
      * Generates and sends a new OTP to the specified mobile number.
      * 
      * @param request the OTP request containing the mobile number
-     * @param ipAddress client IP address for audit logging
      * @param userAgent client user agent for audit logging
      * @return response indicating success
      * @throws OtpCooldownException if the cooldown period has not elapsed
      */
-    public OtpResponse requestOtp(OtpRequest request, String ipAddress, String userAgent) {
+    public OtpResponse requestOtp(OtpRequest request, String userAgent) {
         String normalizedNumber = normalizePhoneNumber(request.getMobileNumber());
 
         // Audit: OTP requested
-        auditService.logOtpRequested(normalizedNumber, ipAddress, userAgent);
+        auditService.logOtpRequested(normalizedNumber, userAgent);
 
         // Check cooldown
         try {
             checkCooldown(normalizedNumber);
         } catch (OtpCooldownException e) {
-            auditService.logCooldownBlocked(normalizedNumber, ipAddress, userAgent);
+            auditService.logCooldownBlocked(normalizedNumber, userAgent);
             throw e;
         }
 
@@ -89,16 +89,22 @@ public class OtpService {
         // Set cooldown
         cooldownCache.put(normalizedNumber, System.currentTimeMillis());
 
-        // Send OTP via SMS
-        boolean sent = smsService.sendOtp(normalizedNumber, otp);
-        if (sent) {
+        // Send OTP via SMS (bypass for test number or if SMS bypass is enabled)
+        if (isTestNumber(normalizedNumber)) {
+            log.info("[TEST MODE] Skipping SMS for test number: {}", maskPhoneNumber(normalizedNumber));
             auditService.logOtpSentSuccess(normalizedNumber);
-        } else {
-            auditService.logOtpSentFailed(normalizedNumber, "SMS delivery failed");
-            log.warn("Failed to send OTP SMS to {}", maskPhoneNumber(normalizedNumber));
+            return OtpResponse.otpSentWithCooldown(otpProperties.getCooldownSeconds());
         }
 
-        log.info("OTP generated and sent for mobile: {}", maskPhoneNumber(normalizedNumber));
+        boolean sent = smsService.sendOtp(normalizedNumber, otp);
+        if (!sent) {
+            auditService.logOtpSentFailed(normalizedNumber, "SMS delivery failed");
+            log.error("Failed to send OTP SMS to {}", maskPhoneNumber(normalizedNumber));
+            throw new RuntimeException("Failed to send OTP. SMS provider error. Please contact support.");
+        }
+
+        auditService.logOtpSentSuccess(normalizedNumber);
+        log.info("OTP generated and sent successfully for mobile: {}", maskPhoneNumber(normalizedNumber));
 
         return OtpResponse.otpSentWithCooldown(otpProperties.getCooldownSeconds());
     }
@@ -107,14 +113,13 @@ public class OtpService {
      * Verifies an OTP for the specified mobile number.
      * 
      * @param request the verification request containing mobile number and OTP
-     * @param ipAddress client IP address for audit logging
      * @param userAgent client user agent for audit logging
      * @return response indicating successful verification
      * @throws ExpiredOtpException      if no OTP exists for the number
      * @throws TooManyAttemptsException if maximum attempts have been exceeded
      * @throws InvalidOtpException      if the OTP is invalid
      */
-    public OtpResponse verifyOtp(OtpVerifyRequest request, String ipAddress, String userAgent) {
+    public OtpResponse verifyOtp(OtpVerifyRequest request, String userAgent) {
         String normalizedNumber = normalizePhoneNumber(request.getMobileNumber());
 
         // Retrieve OTP data from cache
@@ -124,7 +129,7 @@ public class OtpService {
         if (otpData == null) {
             log.warn("OTP verification attempt for non-existent/expired OTP: {}", 
                     maskPhoneNumber(normalizedNumber));
-            auditService.logVerificationFailed(normalizedNumber, 0, ipAddress, userAgent);
+            auditService.logVerificationFailed(normalizedNumber, 0, userAgent);
             throw new ExpiredOtpException();
         }
 
@@ -132,15 +137,15 @@ public class OtpService {
         if (otpData.hasExceededAttempts(otpProperties.getMaxAttempts())) {
             log.warn("OTP max attempts exceeded for: {}", maskPhoneNumber(normalizedNumber));
             otpCache.invalidate(normalizedNumber);
-            auditService.logMaxAttemptsExceeded(normalizedNumber, ipAddress, userAgent);
+            auditService.logMaxAttemptsExceeded(normalizedNumber, userAgent);
             throw new TooManyAttemptsException();
         }
 
-        if (smsProperties.isBypassSending()) {
-            // In bypass mode we still require a requested OTP challenge, but accept any code.
+        // Allow test number or bypass mode to accept any OTP
+        if (isTestNumber(normalizedNumber) || smsProperties.isBypassSending()) {
             otpCache.invalidate(normalizedNumber);
-            auditService.logVerificationSuccess(normalizedNumber, ipAddress, userAgent);
-            log.warn("SMS bypass enabled: accepting OTP verification without code check for {}",
+            auditService.logVerificationSuccess(normalizedNumber, userAgent);
+            log.warn("[TEST/BYPASS MODE] Accepting OTP verification without code check for {}",
                     maskPhoneNumber(normalizedNumber));
             return OtpResponse.verified();
         }
@@ -158,12 +163,12 @@ public class OtpService {
                     otpProperties.getMaxAttempts(),
                     maskPhoneNumber(normalizedNumber));
 
-            auditService.logVerificationFailed(normalizedNumber, newAttemptCount, ipAddress, userAgent);
+            auditService.logVerificationFailed(normalizedNumber, newAttemptCount, userAgent);
 
             // Check if this was the last attempt
             if (remainingAttempts <= 0) {
                 otpCache.invalidate(normalizedNumber);
-                auditService.logMaxAttemptsExceeded(normalizedNumber, ipAddress, userAgent);
+                auditService.logMaxAttemptsExceeded(normalizedNumber, userAgent);
                 throw new TooManyAttemptsException();
             }
 
@@ -174,7 +179,7 @@ public class OtpService {
         otpCache.invalidate(normalizedNumber);
 
         // Audit: Verification success
-        auditService.logVerificationSuccess(normalizedNumber, ipAddress, userAgent);
+        auditService.logVerificationSuccess(normalizedNumber, userAgent);
 
         log.info("OTP verified successfully for: {}", maskPhoneNumber(normalizedNumber));
 
@@ -256,6 +261,17 @@ public class OtpService {
         }
         int len = phoneNumber.length();
         return phoneNumber.substring(0, 4) + "****" + phoneNumber.substring(len - 4);
+    }
+
+    /**
+     * Checks if the phone number is the hardcoded test number.
+     * Test numbers bypass SMS sending and accept any OTP code.
+     *
+     * @param phoneNumber the phone number to check
+     * @return true if it's the test number
+     */
+    private boolean isTestNumber(String phoneNumber) {
+        return TEST_MOBILE_NUMBER.equals(phoneNumber);
     }
 }
 

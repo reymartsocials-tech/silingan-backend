@@ -2,10 +2,12 @@ package com.ria.olita.tech.silingan.service.impl;
 
 import com.ria.olita.tech.silingan.config.KeycloakProperties;
 import com.ria.olita.tech.silingan.dto.req.CreateUserRequest;
+import com.ria.olita.tech.silingan.entity.InvitationType;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.service.KeycloakService;
+import com.ria.olita.tech.silingan.service.email.EmailTemplateSelector;
 
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.BadRequestException;
@@ -38,6 +40,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class KeycloakServiceImpl implements KeycloakService {
 	private final UserCommunityRepository userCommunityRepository;
+	private final EmailTemplateSelector emailTemplateSelector;
 	private static final List<String> ADMIN_INVITATION_REQUIRED_ACTIONS = List.of(
 		"VERIFY_EMAIL",
 		"UPDATE_PROFILE",
@@ -209,6 +212,39 @@ public class KeycloakServiceImpl implements KeycloakService {
 		log.info("User attributes updated successfully for user: {}", userId);
 	}
 
+	/**
+	 * Set the user type attribute on a Keycloak user.
+	 * This tells the executeActions email template which invitation template to use.
+	 * userType should be one of: "staff", "community", "resident"
+	 *
+	 * @param userResource the Keycloak user resource
+	 * @param userType the user type (e.g., "staff", "community")
+	 */
+	private void setUserTypeAttribute(UserResource userResource, String userType) {
+		try {
+			UserRepresentation user = userResource.toRepresentation();
+			if (user == null) {
+				log.warn("Could not set userType attribute: user representation is null");
+				return;
+			}
+
+			Map<String, List<String>> attributes = user.getAttributes();
+			if (attributes == null) {
+				attributes = new HashMap<>();
+			}
+
+			log.info("USER_TYPE_DEBUG: Setting userType attribute for user: {} = {}", user.getId(), userType);
+			attributes.put("userType", List.of(userType));
+			user.setAttributes(attributes);
+			userResource.update(user);
+
+			log.info("USER_TYPE_DEBUG: Successfully set userType attribute for user: {} = {}", user.getId(), userType);
+		} catch (Exception e) {
+			log.warn("Failed to set userType attribute: {}", e.getMessage(), e);
+			// Don't fail the whole flow if setting attribute fails
+		}
+	}
+
 	@Override
 	public List<String> getRealmRoles(String keycloakUserId) {
 		Keycloak keycloak = getKeycloakClient();
@@ -259,19 +295,34 @@ public class KeycloakServiceImpl implements KeycloakService {
 
 	@Override
 	public void sendRequiredActionsEmail(String keycloakUserId, List<String> requiredActions) {
+		sendRequiredActionsEmail(keycloakUserId, requiredActions, InvitationType.RESIDENT);
+	}
+
+	@Override
+	public void sendRequiredActionsEmail(String keycloakUserId, List<String> requiredActions,
+		InvitationType invitationType) {
 		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UserResource userResource = realmResource.users().get(keycloakUserId);
 
 		try {
+			String templateName = emailTemplateSelector.getTemplate(invitationType);
+			String displayName = emailTemplateSelector.getDisplayName(invitationType);
+			
+			// Set userType attribute to tell executeActions.ftl which template to use
+			String userType = templateNameToUserType(templateName);
+			setUserTypeAttribute(userResource, userType);
+			
 			String redirectClientId = keycloakProperties.getInvitationRedirectClientId();
 			String redirectUri = keycloakProperties.getInvitationRedirectUri();
 			Integer lifespanSeconds = keycloakProperties.getInvitationLifespanSeconds();
 
 			if (isNotBlank(redirectClientId) && isNotBlank(redirectUri)) {
-				log.info("Sending required-actions email with redirect to {} using client {}", redirectUri, redirectClientId);
+				log.info("Sending {} email with redirect to {} using client {} and userType '{}'",
+					displayName, redirectUri, redirectClientId, userType);
 				try {
-					userResource.executeActionsEmail(redirectClientId, redirectUri, lifespanSeconds, requiredActions);
+					userResource.executeActionsEmail(redirectClientId, redirectUri, lifespanSeconds,
+						requiredActions);
 					return;
 				} catch (BadRequestException badRequestException) {
 					log.warn(
@@ -283,12 +334,21 @@ public class KeycloakServiceImpl implements KeycloakService {
 				}
 			}
 
-			log.info("Sending required-actions email without explicit redirect configuration");
+			log.info("Sending {} email without explicit redirect configuration using userType '{}'",
+				displayName, userType);
 			userResource.executeActionsEmail(requiredActions);
 		} catch (Exception e) {
-			log.error("Error sending required actions email to user {}", keycloakUserId, e);
-			throw new RuntimeException("Failed to send administrator invitation email", e);
+			String displayName = emailTemplateSelector.getDisplayName(invitationType);
+			log.error("Error sending {} to user {}", displayName, keycloakUserId, e);
+			throw new RuntimeException("Failed to send " + displayName, e);
 		}
+	}
+
+	private String templateNameToUserType(String templateName) {
+		if (templateName == null) {
+			return "community";
+		}
+		return templateName.replace("-invitation", "");
 	}
 
 	private boolean isNotBlank(String value) {

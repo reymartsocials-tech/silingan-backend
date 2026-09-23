@@ -1,4 +1,18 @@
 <#ftl output_format="plainText">
+
+<#-- Determine invitation type from userType attribute -->
+<#assign invitationType = "community">
+<#if user?? && user.attributes?? && user.attributes.userType??>
+  <#if user.attributes.userType?is_sequence>
+    <#if user.attributes.userType?size gt 0>
+      <#assign invitationType = user.attributes.userType[0]>
+    </#if>
+  <#else>
+    <#assign invitationType = user.attributes.userType>
+  </#if>
+</#if>
+
+<#-- Extract community name for use in templates -->
 <#assign communityName = "your community">
 <#if user?? && user.attributes?? && user.attributes.communityName??>
   <#if user.attributes.communityName?is_sequence>
@@ -10,31 +24,14 @@
   </#if>
 </#if>
 
-Hello,
-
-Welcome to Silingan!
-
-You have been invited to serve as the Community Admin for ${communityName}.
-
-As a Community Admin, you'll be able to:
-- Manage your community's profile and settings
-- Create and publish announcements
-- Manage staff accounts and permissions
-- Maintain the community directory and emergency contacts
-- Monitor and manage resident reports
-- Oversee day-to-day community operations
-
-To get started, please activate your account by clicking the link below:
-
-${link}
-
-For security reasons, this invitation link will expire within 24 hours. If it expires, please contact your Silingan administrator to request a new invitation.
-
-If you weren't expecting this invitation, you may safely ignore this email.
-We look forward to helping you build a more connected and responsive community.
-
-Warm regards,
-The Silingan Team
-
-
+<#-- Route to the appropriate invitation template based on userType -->
+<#if invitationType == "staff">
+  <#include "staff-invitation.ftl">
+<#elseif invitationType == "resident">
+  <#-- For now, use community template. Add resident-invitation.ftl if needed -->
+  <#include "community-invitation.ftl">
+<#else>
+  <#-- Default to community invitation template -->
+  <#include "community-invitation.ftl">
+</#if>
 

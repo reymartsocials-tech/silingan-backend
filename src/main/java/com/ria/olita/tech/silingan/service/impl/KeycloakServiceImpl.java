@@ -213,18 +213,17 @@ public class KeycloakServiceImpl implements KeycloakService {
 	}
 
 	/**
-	 * Set the user type attribute on a Keycloak user.
-	 * This tells the executeActions email template which invitation template to use.
-	 * userType should be one of: "staff", "community", "resident"
+	 * Set the roleCode attribute on a Keycloak user.
+	 * This is used by email templates to select the appropriate invitation content.
 	 *
 	 * @param userResource the Keycloak user resource
-	 * @param userType the user type (e.g., "staff", "community")
+	 * @param roleCode the role code (e.g., "PMO_STAFF", "COMMUNITY_ADMIN", "TENANT")
 	 */
-	private void setUserTypeAttribute(UserResource userResource, String userType) {
+	private void setRoleCodeAttribute(UserResource userResource, String roleCode) {
 		try {
 			UserRepresentation user = userResource.toRepresentation();
 			if (user == null) {
-				log.warn("Could not set userType attribute: user representation is null");
+				log.warn("Could not set roleCode attribute: user representation is null");
 				return;
 			}
 
@@ -233,15 +232,14 @@ public class KeycloakServiceImpl implements KeycloakService {
 				attributes = new HashMap<>();
 			}
 
-			log.info("USER_TYPE_DEBUG: Setting userType attribute for user: {} = {}", user.getId(), userType);
-			attributes.put("userType", List.of(userType));
+			log.info("ROLE_CODE_DEBUG: Setting roleCode attribute for user: {} = {}", user.getId(), roleCode);
+			attributes.put("roleCode", List.of(roleCode));
 			user.setAttributes(attributes);
 			userResource.update(user);
 
-			log.info("USER_TYPE_DEBUG: Successfully set userType attribute for user: {} = {}", user.getId(), userType);
+			log.info("ROLE_CODE_DEBUG: Successfully set roleCode attribute for user: {} = {}", user.getId(), roleCode);
 		} catch (Exception e) {
-			log.warn("Failed to set userType attribute: {}", e.getMessage(), e);
-			// Don't fail the whole flow if setting attribute fails
+			log.warn("Failed to set roleCode attribute: {}", e.getMessage(), e);
 		}
 	}
 
@@ -309,17 +307,17 @@ public class KeycloakServiceImpl implements KeycloakService {
 			String templateName = emailTemplateSelector.getTemplate(invitationType);
 			String displayName = emailTemplateSelector.getDisplayName(invitationType);
 			
-			// Set userType attribute to tell executeActions.ftl which template to use
-			String userType = templateNameToUserType(templateName);
-			setUserTypeAttribute(userResource, userType);
+			// Set roleCode attribute to tell executeActions.ftl which template to use
+			String roleCode = getRoleCodeForInvitationType(invitationType);
+			setRoleCodeAttribute(userResource, roleCode);
 			
 			String redirectClientId = keycloakProperties.getInvitationRedirectClientId();
 			String redirectUri = keycloakProperties.getInvitationRedirectUri();
 			Integer lifespanSeconds = keycloakProperties.getInvitationLifespanSeconds();
 
 			if (isNotBlank(redirectClientId) && isNotBlank(redirectUri)) {
-				log.info("Sending {} email with redirect to {} using client {} and userType '{}'",
-					displayName, redirectUri, redirectClientId, userType);
+				log.info("Sending {} email with redirect to {} using client {} and roleCode '{}'",
+					displayName, redirectUri, redirectClientId, roleCode);
 				try {
 					userResource.executeActionsEmail(redirectClientId, redirectUri, lifespanSeconds,
 						requiredActions);
@@ -334,8 +332,8 @@ public class KeycloakServiceImpl implements KeycloakService {
 				}
 			}
 
-			log.info("Sending {} email without explicit redirect configuration using userType '{}'",
-				displayName, userType);
+			log.info("Sending {} email without explicit redirect configuration using roleCode '{}'",
+				displayName, roleCode);
 			userResource.executeActionsEmail(requiredActions);
 		} catch (Exception e) {
 			String displayName = emailTemplateSelector.getDisplayName(invitationType);
@@ -344,11 +342,15 @@ public class KeycloakServiceImpl implements KeycloakService {
 		}
 	}
 
-	private String templateNameToUserType(String templateName) {
-		if (templateName == null) {
-			return "community";
+	private String getRoleCodeForInvitationType(InvitationType invitationType) {
+		if (invitationType == null) {
+			return "COMMUNITY_ADMIN";
 		}
-		return templateName.replace("-invitation", "");
+		return switch (invitationType) {
+			case STAFF -> "PMO_STAFF";
+			case RESIDENT -> "TENANT";
+			default -> "COMMUNITY_ADMIN";
+		};
 	}
 
 	private boolean isNotBlank(String value) {

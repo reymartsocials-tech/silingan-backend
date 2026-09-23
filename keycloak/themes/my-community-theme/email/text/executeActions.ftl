@@ -1,17 +1,5 @@
 <#ftl output_format="plainText">
 
-<#-- Determine invitation type from userType attribute -->
-<#assign invitationType = "community">
-<#if user?? && user.attributes?? && user.attributes.userType??>
-  <#if user.attributes.userType?is_sequence>
-    <#if user.attributes.userType?size gt 0>
-      <#assign invitationType = user.attributes.userType[0]>
-    </#if>
-  <#else>
-    <#assign invitationType = user.attributes.userType>
-  </#if>
-</#if>
-
 <#-- Extract community name for use in templates -->
 <#assign communityName = "your community">
 <#if user?? && user.attributes?? && user.attributes.communityName??>
@@ -24,14 +12,14 @@
   </#if>
 </#if>
 
-<#-- Route to the appropriate invitation template based on userType -->
-<#if invitationType == "staff">
+<#-- Route to appropriate template based on roleCode attribute -->
+<#if user.attributes.roleCode[0] == "PMO_STAFF">
   <#include "staff-invitation.ftl">
-<#elseif invitationType == "resident">
-  <#-- For now, use community template. Add resident-invitation.ftl if needed -->
+<#elseif user.attributes.roleCode[0] == "TENANT">
+  <#include "community-invitation.ftl">
+<#elseif user.attributes.roleCode[0] == "COMMUNITY_ADMIN">
   <#include "community-invitation.ftl">
 <#else>
-  <#-- Default to community invitation template -->
   <#include "community-invitation.ftl">
 </#if>
 

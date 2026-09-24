@@ -7,7 +7,7 @@ set -e
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
 REALM="${REALM:-silingan-platform}"
 ADMIN_USER="${ADMIN_USER:-admin}"
-ADMIN_PASS="${ADMIN_PASS:-admin}"
+ADMIN_PASS="${ADMIN_PASS:-123}"
 
 echo "=========================================="
 echo "Assigning realm-management roles to silingan-backend service account"

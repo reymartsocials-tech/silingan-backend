@@ -12,6 +12,7 @@ import com.ria.olita.tech.silingan.entity.CommunityAdminInvitationStatus;
 import com.ria.olita.tech.silingan.entity.Community;
 import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.CommunityType;
+import com.ria.olita.tech.silingan.entity.InvitationType;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.exception.ForbiddenException;
@@ -255,7 +256,8 @@ public class CommunityServiceImpl implements CommunityService {
 		);
 		keycloakService.sendRequiredActionsEmail(
 			keycloakUserId,
-			ADMIN_REQUIRED_ACTIONS
+			ADMIN_REQUIRED_ACTIONS,
+			InvitationType.RESIDENT
 		);
 
 		CommunityAdminInvitation invitation = CommunityAdminInvitation.builder()

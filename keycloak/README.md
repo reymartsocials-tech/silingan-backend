@@ -288,3 +288,171 @@ docker-compose down -v && docker-compose up -d
 - Ensure `spring.profiles.active=local` is set
 - Check that Hibernate is set to `ddl-auto: create-drop`
 - Verify `flyway.enabled: false` in local profile
+
+---
+
+## Staff Invitation Emails (custom email theme)
+
+Staff invitations reuse Keycloak's built-in `executeActionsEmail()` flow. No custom
+SPI and no extra realm is needed: the Silingan staff role travels to the email
+template as a **user attribute**, and the theme branches on it with FreeMarker.
+
+### Why a user attribute and not a realm role
+
+`StaffRoleCode` (`COMMUNITY_ADMIN`, `PMO_STAFF`, `SECURITY_ADMIN`,
+`MAINTENANCE_ADMIN`, `READ_ONLY_STAFF`) is an application concept stored in the
+Silingan database. These are deliberately **not** Keycloak realm roles, so the
+backend writes them onto the Keycloak user right before sending the email.
+
+### Theme folder structure
+
+```
+keycloak/themes/my-community-theme/
+└── email/
+    ├── theme.properties                 # parent=base, locales=en
+    ├── messages/
+    │   └── messages_en.properties       # subject + requiredAction labels only
+    ├── html/
+    │   ├── executeActions.ftl           # router: the ONLY emailLayout wrapper
+    │   ├── invitation-context.ftl       # safe attribute helpers (attr/greeting/expiry)
+    │   ├── staff-invitation.ftl         # macro lib, conditionals on roleCode
+    │   └── community-invitation.ftl     # macro lib, resident fallback
+    └── text/
+        ├── executeActions.ftl           # same routing, plain text
+        ├── invitation-context.ftl
+        ├── staff-invitation.ftl
+        └── community-invitation.ftl
+```
+
+`template.ftl` (the `emailLayout` macro) is inherited from the `base` theme and
+exists only under `html/`, which is why the `text/` router renders the partials
+directly.
+
+### Attributes read by the theme
+
+| Attribute         | Example                                | Purpose                                 |
+|-------------------|----------------------------------------|-----------------------------------------|
+| `invitationType`  | `STAFF` / `RESIDENT`                   | Chooses staff vs resident content       |
+| `roleCode`        | `SECURITY_ADMIN`                       | Selects the role specific body          |
+| `roleDisplayName` | `Security Admin`                       | Human readable label                    |
+| `communityName`   | `Sunrise Village`                      | Rendered in the body                    |
+| `communityId`     | `1111...`                              | Traceability only                       |
+
+They are produced by `InvitationEmailContext#toKeycloakAttributes()` in the
+backend and declared in `keycloak/config/silingan-user-profile.json`.
+
+### Required realm configuration
+
+Keycloak 26 uses the declarative user profile and **silently discards unknown
+("unmanaged") user attributes**. Without the config below, `roleCode` is never
+stored and every invitation falls back to the default template.
+
+For a brand new realm, `keycloak/import/silingan-platform-realm.json` already
+contains the user profile, SMTP settings and
+`actionTokenGeneratedByAdminLifespan`. Note that `--import-realm` **skips realms
+that already exist**, so for an existing realm apply the same settings over the
+Admin REST API:
+
+```bash
+ADMIN_USER=admin ADMIN_PASS=<kc-admin-password> ./keycloak/apply-invitation-config.sh
+```
+
+> Only realm JSON files may live in `keycloak/import/`. Keycloak tries to import
+> every file in that directory as a realm, which is why the user profile
+> definition lives in `keycloak/config/`.
+
+### Local email testing (Mailpit)
+
+Mailpit is only a **local SMTP sink** used so invitations can be inspected
+without sending real mail. Nothing about the theme depends on it.
+
+```bash
+docker compose up -d
+# Inbox UI: http://localhost:8025
+```
+
+### Sending through a real provider (Gmail, SES, SendGrid, ...)
+
+The messages Keycloak produces are ordinary multipart (text + HTML) emails, so
+they render the same in Gmail, Outlook or any other client. Only the realm SMTP
+settings change - no template change is required.
+
+```bash
+SMTP_HOST=smtp.gmail.com \
+SMTP_PORT=587 \
+SMTP_STARTTLS=true \
+SMTP_AUTH=true \
+SMTP_USER='you@gmail.com' \
+SMTP_PASSWORD='xxxx xxxx xxxx xxxx' \
+SMTP_FROM='you@gmail.com' \
+SMTP_FROM_DISPLAY_NAME='Silingan' \
+ADMIN_USER=admin ADMIN_PASS=<kc-admin-password> \
+./keycloak/apply-invitation-config.sh
+```
+
+Gmail notes:
+- Use a **Google App Password** (requires 2FA); the normal account password is
+  rejected.
+- `SMTP_FROM` must be the authenticated account or a verified alias, otherwise
+  Gmail rewrites or rejects the sender.
+- Port `587` with `SMTP_STARTTLS=true`, or port `465` with `SMTP_SSL=true`.
+- Gmail is fine for testing but rate limited; use SES/SendGrid/Postmark for
+  production volume.
+
+You can also set this in the admin console under
+**Realm settings -> Email**, then use *Test connection*.
+
+### Deploying the theme to your Keycloak
+
+How you ship the theme depends on how Keycloak runs.
+
+**1. docker-compose (local) - nothing to build.**
+`docker-compose.yml` bind-mounts `./keycloak/themes` into the container, so
+template edits are picked up on restart:
+
+```bash
+docker compose restart keycloak
+```
+
+**2. `keycloak/Dockerfile` (deployed image) - rebuild required.**
+That Dockerfile `COPY`s `themes/`, `providers/` and `import/` at **build time**
+and runs `kc.sh build`, so a running image does not see your changes until it is
+rebuilt and redeployed:
+
+```bash
+docker build -t <your-registry>/silingan-keycloak:latest ./keycloak
+docker push <your-registry>/silingan-keycloak:latest
+# then redeploy/restart the service using that image
+```
+
+In both cases the realm-side settings (user profile attributes, SMTP, token
+lifespan) are **data, not image content**. A rebuilt image will not apply them to
+an existing realm, so run this once per environment:
+
+```bash
+KEYCLOAK_URL=https://<your-keycloak> REALM=silingan-platform \
+ADMIN_USER=admin ADMIN_PASS=<kc-admin-password> \
+./keycloak/apply-invitation-config.sh
+```
+
+### Iterating on templates
+
+Templates are bind-mounted into the container, and `docker-compose.theme-dev.yml`
+disables theme caching:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.theme-dev.yml up -d
+```
+
+### Pitfalls to avoid
+
+- **Never index an attribute directly** (`user.attributes.roleCode[0]`).
+  `ProfileBean.getAttributes()` returns `Map<String, String>`, so `[0]` performs
+  *string slicing* and yields `"P"` — the comparison silently never matches.
+  Use the `attr()` helper in `invitation-context.ftl` instead.
+- **Wrap `emailLayout` exactly once.** Only `executeActions.ftl` applies it; the
+  partials are macro libraries that emit body content.
+- **The subject cannot depend on `roleCode`.** Keycloak resolves
+  `executeActionsSubject` from the message bundle before the template runs and
+  without access to user attributes, so the subject is kept role neutral. Varying
+  it would require a custom `EmailTemplateProvider` SPI.

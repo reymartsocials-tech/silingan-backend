@@ -32,6 +32,18 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d
 
+  # Local SMTP sink so invitation emails can be inspected without a real mail server.
+  # Web UI: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.6
     container_name: keycloak
@@ -51,6 +63,7 @@ services:
       - "8080:8080"
     depends_on:
       - postgres
+      - mailpit
 
 volumes:
   pgdata:

@@ -8,6 +8,7 @@ import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.service.KeycloakService;
 import com.ria.olita.tech.silingan.service.email.EmailTemplateSelector;
+import com.ria.olita.tech.silingan.service.email.InvitationEmailContext;
 
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.BadRequestException;
@@ -213,34 +214,22 @@ public class KeycloakServiceImpl implements KeycloakService {
 	}
 
 	/**
-	 * Set the roleCode attribute on a Keycloak user.
-	 * This is used by email templates to select the appropriate invitation content.
+	 * Write the Silingan invitation context onto the Keycloak user as user attributes.
 	 *
-	 * @param userResource the Keycloak user resource
-	 * @param roleCode the role code (e.g., "PMO_STAFF", "COMMUNITY_ADMIN", "TENANT")
+	 * <p>These attributes are what the custom email theme reads in
+	 * {@code email/html/executeActions.ftl} to decide which invitation content to render.
+	 * They must be declared in the realm user profile
+	 * ({@code keycloak/config/silingan-user-profile.json}); otherwise Keycloak 26 silently
+	 * discards them as unmanaged attributes and every invitation falls back to the default
+	 * template.
+	 *
+	 * @param keycloakUserId the Keycloak user ID
+	 * @param context the invitation context to expose to the email theme
 	 */
-	private void setRoleCodeAttribute(UserResource userResource, String roleCode) {
-		try {
-			UserRepresentation user = userResource.toRepresentation();
-			if (user == null) {
-				log.warn("Could not set roleCode attribute: user representation is null");
-				return;
-			}
-
-			Map<String, List<String>> attributes = user.getAttributes();
-			if (attributes == null) {
-				attributes = new HashMap<>();
-			}
-
-			log.info("ROLE_CODE_DEBUG: Setting roleCode attribute for user: {} = {}", user.getId(), roleCode);
-			attributes.put("roleCode", List.of(roleCode));
-			user.setAttributes(attributes);
-			userResource.update(user);
-
-			log.info("ROLE_CODE_DEBUG: Successfully set roleCode attribute for user: {} = {}", user.getId(), roleCode);
-		} catch (Exception e) {
-			log.warn("Failed to set roleCode attribute: {}", e.getMessage(), e);
-		}
+	private void applyInvitationAttributes(String keycloakUserId, InvitationEmailContext context) {
+		Map<String, List<String>> attributes = context.toKeycloakAttributes();
+		updateUserAttributes(keycloakUserId, attributes);
+		log.info("Applied invitation attributes to user {}: {}", keycloakUserId, attributes);
 	}
 
 	@Override
@@ -299,6 +288,17 @@ public class KeycloakServiceImpl implements KeycloakService {
 	@Override
 	public void sendRequiredActionsEmail(String keycloakUserId, List<String> requiredActions,
 		InvitationType invitationType) {
+		sendInvitationEmail(keycloakUserId, requiredActions, InvitationEmailContext.forType(invitationType));
+	}
+
+	@Override
+	public void sendInvitationEmail(String keycloakUserId, List<String> requiredActions,
+		InvitationEmailContext context) {
+		InvitationEmailContext effectiveContext = context != null
+			? context
+			: InvitationEmailContext.forType(InvitationType.RESIDENT);
+		InvitationType invitationType = effectiveContext.invitationType();
+
 		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UserResource userResource = realmResource.users().get(keycloakUserId);
@@ -306,18 +306,18 @@ public class KeycloakServiceImpl implements KeycloakService {
 		try {
 			String templateName = emailTemplateSelector.getTemplate(invitationType);
 			String displayName = emailTemplateSelector.getDisplayName(invitationType);
-			
-			// Set roleCode attribute to tell executeActions.ftl which template to use
-			String roleCode = getRoleCodeForInvitationType(invitationType);
-			setRoleCodeAttribute(userResource, roleCode);
-			
+
+			// The email theme renders executeActions.ftl and branches on these attributes,
+			// so they must be stored before executeActionsEmail() is called.
+			applyInvitationAttributes(keycloakUserId, effectiveContext);
+
 			String redirectClientId = keycloakProperties.getInvitationRedirectClientId();
 			String redirectUri = keycloakProperties.getInvitationRedirectUri();
 			Integer lifespanSeconds = keycloakProperties.getInvitationLifespanSeconds();
 
 			if (isNotBlank(redirectClientId) && isNotBlank(redirectUri)) {
-				log.info("Sending {} email with redirect to {} using client {} and roleCode '{}'",
-					displayName, redirectUri, redirectClientId, roleCode);
+				log.info("Sending {} email (template={}) with redirect to {} using client {}",
+					displayName, templateName, redirectUri, redirectClientId);
 				try {
 					userResource.executeActionsEmail(redirectClientId, redirectUri, lifespanSeconds,
 						requiredActions);
@@ -332,8 +332,8 @@ public class KeycloakServiceImpl implements KeycloakService {
 				}
 			}
 
-			log.info("Sending {} email without explicit redirect configuration using roleCode '{}'",
-				displayName, roleCode);
+			log.info("Sending {} email (template={}) without explicit redirect configuration",
+				displayName, templateName);
 			userResource.executeActionsEmail(requiredActions);
 		} catch (Exception e) {
 			String displayName = emailTemplateSelector.getDisplayName(invitationType);
@@ -342,23 +342,17 @@ public class KeycloakServiceImpl implements KeycloakService {
 		}
 	}
 
-	private String getRoleCodeForInvitationType(InvitationType invitationType) {
-		if (invitationType == null) {
-			return "COMMUNITY_ADMIN";
-		}
-		return switch (invitationType) {
-			case STAFF -> "PMO_STAFF";
-			case RESIDENT -> "TENANT";
-			default -> "COMMUNITY_ADMIN";
-		};
-	}
-
 	private boolean isNotBlank(String value) {
 		return value != null && !value.isBlank();
 	}
 
 	@Override
 	public String createInvitationUser(String email) {
+		return createInvitationUser(email, null, null);
+	}
+
+	@Override
+	public String createInvitationUser(String email, String firstName, String lastName) {
 		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UsersResource usersResource = realmResource.users();
@@ -366,6 +360,12 @@ public class KeycloakServiceImpl implements KeycloakService {
 		UserRepresentation user = new UserRepresentation();
 		user.setUsername(email.toLowerCase());
 		user.setEmail(email.toLowerCase());
+		if (isNotBlank(firstName)) {
+			user.setFirstName(firstName);
+		}
+		if (isNotBlank(lastName)) {
+			user.setLastName(lastName);
+		}
 		user.setEnabled(true);
 		user.setEmailVerified(false);
 		user.setRequiredActions(ADMIN_INVITATION_REQUIRED_ACTIONS);

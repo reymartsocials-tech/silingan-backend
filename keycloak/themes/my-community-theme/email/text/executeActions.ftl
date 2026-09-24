@@ -1,25 +1,20 @@
 <#ftl output_format="plainText">
+<#--
+  Plain text router for executeActionsEmail(). Mirrors html/executeActions.ftl.
+  There is no layout macro for text emails, so the partials are rendered directly.
+-->
+<#import "invitation-context.ftl" as ctx>
+<#import "staff-invitation.ftl" as staff>
+<#import "community-invitation.ftl" as community>
 
-<#-- Extract community name for use in templates -->
-<#assign communityName = "your community">
-<#if user?? && user.attributes?? && user.attributes.communityName??>
-  <#if user.attributes.communityName?is_sequence>
-    <#if user.attributes.communityName?size gt 0>
-      <#assign communityName = user.attributes.communityName[0]>
-    </#if>
-  <#else>
-    <#assign communityName = user.attributes.communityName>
-  </#if>
-</#if>
-
-<#-- Route to appropriate template based on roleCode attribute -->
-<#if user.attributes.roleCode[0] == "PMO_STAFF">
-  <#include "staff-invitation.ftl">
-<#elseif user.attributes.roleCode[0] == "TENANT">
-  <#include "community-invitation.ftl">
-<#elseif user.attributes.roleCode[0] == "COMMUNITY_ADMIN">
-  <#include "community-invitation.ftl">
+<#assign invitationType = ctx.attr("invitationType", "RESIDENT")?upper_case>
+<#assign roleCode = ctx.attr("roleCode", "")?upper_case>
+<#assign roleDisplayName = ctx.attr("roleDisplayName", "")>
+<#assign communityName = ctx.attr("communityName", "your community")>
+<#assign greeting = ctx.greetingName()>
+<#assign expiration = ctx.expiryText()>
+<#if invitationType == "STAFF">
+<@staff.content roleCode=roleCode roleDisplayName=roleDisplayName communityName=communityName greeting=greeting expiration=expiration />
 <#else>
-  <#include "community-invitation.ftl">
+<@community.content communityName=communityName greeting=greeting expiration=expiration />
 </#if>
-

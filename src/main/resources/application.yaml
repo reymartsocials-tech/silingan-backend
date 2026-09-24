@@ -75,7 +75,7 @@ keycloak:
 # ============================================
 server:
   # SERVER_PORT - Port the application listens on
-  port: ${SERVER_PORT:8082}
+  port: ${SERVER_PORT:8083}
 
 # ============================================
 # Logging Configuration
@@ -134,6 +134,6 @@ spring:
     enabled: false
   sql:
     init:
-      mode: always
+      mode: never
       data-locations: classpath:db/data/demo-data.sql
 

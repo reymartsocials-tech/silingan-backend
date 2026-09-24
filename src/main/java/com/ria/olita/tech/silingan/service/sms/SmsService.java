@@ -92,6 +92,28 @@ public class SmsService {
         return activeProvider.sendOtp(phoneNumber, otp);
     }
 
+	/**
+	 * Sends a generic SMS message to the specified phone number using the active provider.
+	 *
+	 * @param phoneNumber the recipient's phone number
+	 * @param message     the message to send
+	 * @return true if sent successfully
+	 */
+	public boolean sendSms(String phoneNumber, String message) {
+		if (smsProperties.isBypassSending()) {
+			log.warn("SMS bypass is enabled; skipping SMS send to {}", maskPhoneNumber(phoneNumber));
+			return true;
+		}
+
+		if (activeProvider == null) {
+			log.error("No SMS provider available to send SMS");
+			return false;
+		}
+
+		log.debug("Sending SMS to {} via {}", maskPhoneNumber(phoneNumber), activeProvider.getProviderName());
+		return activeProvider.sendSms(phoneNumber, message);
+	}
+
     /**
      * Masks a phone number for logging purposes.
      * Example: +639171234567 -> +6391****4567

@@ -1,0 +1,107 @@
+{
+  "unmanagedAttributePolicy": "ADMIN_EDIT",
+  "attributes": [
+    {
+      "name": "username",
+      "displayName": "${username}",
+      "validations": {
+        "length": { "min": 3, "max": 255 },
+        "username-prohibited-characters": {},
+        "up-username-not-idn-homograph": {}
+      },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin", "user"] },
+      "multivalued": false
+    },
+    {
+      "name": "email",
+      "displayName": "${email}",
+      "validations": { "email": {}, "length": { "max": 255 } },
+      "required": { "roles": ["user"] },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin", "user"] },
+      "multivalued": false
+    },
+    {
+      "name": "firstName",
+      "displayName": "${firstName}",
+      "validations": { "length": { "max": 255 }, "person-name-prohibited-characters": {} },
+      "required": { "roles": ["user"] },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin", "user"] },
+      "multivalued": false
+    },
+    {
+      "name": "lastName",
+      "displayName": "${lastName}",
+      "validations": { "length": { "max": 255 }, "person-name-prohibited-characters": {} },
+      "required": { "roles": ["user"] },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin", "user"] },
+      "multivalued": false
+    },
+    {
+      "name": "mobileNumber",
+      "displayName": "Mobile number",
+      "group": "silingan-metadata",
+      "validations": { "length": { "max": 32 } },
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "mobile_number_verified",
+      "displayName": "Mobile number verified",
+      "group": "silingan-metadata",
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "invitationType",
+      "displayName": "Invitation type",
+      "group": "silingan-invitation",
+      "validations": { "length": { "max": 32 } },
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "roleCode",
+      "displayName": "Silingan staff role code",
+      "group": "silingan-invitation",
+      "validations": { "length": { "max": 64 } },
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "roleDisplayName",
+      "displayName": "Silingan staff role label",
+      "group": "silingan-invitation",
+      "validations": { "length": { "max": 128 } },
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "communityId",
+      "displayName": "Community id",
+      "group": "silingan-invitation",
+      "validations": { "length": { "max": 64 } },
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "communityName",
+      "displayName": "Community name",
+      "group": "silingan-invitation",
+      "validations": { "length": { "max": 255 } },
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
+    }
+  ],
+  "groups": [
+    {
+      "name": "silingan-invitation",
+      "displayHeader": "Silingan invitation context",
+      "displayDescription": "Attributes read by the custom email theme (executeActions.ftl) to personalise invitations."
+    },
+    {
+      "name": "silingan-metadata",
+      "displayHeader": "Silingan user metadata",
+      "displayDescription": "Additional Silingan profile data managed by the backend."
+    }
+  ]
+}

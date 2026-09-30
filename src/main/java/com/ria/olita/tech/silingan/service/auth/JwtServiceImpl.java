@@ -33,12 +33,12 @@ public class JwtServiceImpl implements JwtService {
 		Instant expiresAt = issuedAt.plusSeconds(jwtProperties.getAccessTokenTtlSeconds());
 
 		var builder = JwtClaimsSet.builder()
-			.subject(user.getId().toString())
+			.subject(user.getKeycloakUserId())
 			.issuer(jwtProperties.getIssuer())
 			.issuedAt(issuedAt)
 			.expiresAt(expiresAt)
 			.id(UUID.randomUUID().toString())
-			.claim("keycloakId", user.getKeycloakUserId())
+			.claim("userId", user.getId().toString())
 			.claim("mobileNumber", user.getMobileNumber())
 			.claim("firstName", user.getFirstName())
 			.claim("lastName", user.getLastName())

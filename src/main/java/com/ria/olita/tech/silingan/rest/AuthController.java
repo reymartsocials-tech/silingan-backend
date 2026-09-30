@@ -8,9 +8,6 @@ import com.ria.olita.tech.silingan.service.UserService;
 import com.ria.olita.tech.silingan.service.auth.AuthenticationService;
 
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.ExampleObject;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -81,12 +77,8 @@ public class AuthController {
 	@PostMapping("/login/otp")
 	@Operation(summary = "Login with OTP", description = "Verifies OTP and returns backend-issued JWT")
 	public ResponseEntity<LoginResponse> loginWithOtp(
-		@Valid @RequestBody OtpVerifyRequest request,
-		HttpServletRequest httpRequest) {
-		return ResponseEntity.ok(authenticationService.loginWithOtp(
-			request,
-			httpRequest.getHeader("User-Agent")
-		));
+		@Valid @RequestBody OtpVerifyRequest request) {
+		return ResponseEntity.ok(authenticationService.loginWithOtp(request));
 	}
 
 

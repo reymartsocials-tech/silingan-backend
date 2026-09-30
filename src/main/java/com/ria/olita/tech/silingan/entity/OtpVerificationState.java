@@ -18,9 +18,7 @@ import lombok.Setter;
 
 @Entity
 @Table(name = "otp_verification_state", indexes = {
-	@Index(name = "idx_otp_state_user", columnList = "keycloak_user_id"),
-	@Index(name = "idx_otp_state_exp", columnList = "expires_at"),
-	@Index(name = "idx_otp_state_user_token", columnList = "keycloak_user_id,token_id")
+	@Index(name = "idx_otp_state_exp", columnList = "expires_at")
 })
 @Getter
 @Setter
@@ -33,11 +31,8 @@ public class OtpVerificationState {
 	@GeneratedValue
 	private UUID id;
 
-	@Column(name = "keycloak_user_id", nullable = false, length = 128)
-	private String keycloakUserId;
-
-	@Column(name = "token_id", length = 256)
-	private String tokenId;
+	@Column(name = "mobile_number", nullable = false, length = 20)
+	private String mobileNumber;
 
 	@Column(name = "otp_verified", nullable = false)
 	private boolean otpVerified;
@@ -48,4 +43,3 @@ public class OtpVerificationState {
 	@Column(name = "expires_at", nullable = false)
 	private Instant expiresAt;
 }
-

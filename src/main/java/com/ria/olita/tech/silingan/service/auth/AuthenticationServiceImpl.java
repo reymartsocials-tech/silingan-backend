@@ -1,6 +1,9 @@
 package com.ria.olita.tech.silingan.service.auth;
 
+import com.ria.olita.tech.silingan.service.otp.OtpHandlerService;
+import com.ria.olita.tech.silingan.service.otp.OtpVerificationStateService;
 import com.ria.olita.tech.silingan.util.ContactNormalizer;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -16,6 +19,7 @@ import com.ria.olita.tech.silingan.repository.UserRepository;
 import com.ria.olita.tech.silingan.service.KeycloakService;
 import com.ria.olita.tech.silingan.service.otp.OtpService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -27,13 +31,17 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 	private final KeycloakService keycloakService;
 	private final JwtService jwtService;
 	private final JwtProperties jwtProperties;
+	private final OtpHandlerService otpHandlerService;
+
 
 	@Override
 	@Transactional
-	public LoginResponse loginWithOtp(OtpVerifyRequest request, String userAgent) {
-		otpService.verifyOtp(request, userAgent);
+	public LoginResponse loginWithOtp(OtpVerifyRequest request) {
+
 		User user = userRepository.findByMobileNumber(normalizePhoneNumber(request.getMobileNumber()))
 			.orElseThrow(() -> new NotFoundException("User not found for mobile number"));
+
+		otpHandlerService.verify(request);
 		return buildLoginResponse(user);
 	}
 
@@ -47,13 +55,15 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
 	private LoginResponse buildLoginResponse(User user) {
 		List<String> roles = keycloakService.getRealmRoles(user.getKeycloakUserId());
-		UUID communityId = user.getLastSelectedCommunity() != null ? user.getLastSelectedCommunity().getId() : null;
+		UUID communityId = user.getLastSelectedCommunity() != null ? user.getLastSelectedCommunity()
+			.getId() : null;
 		String token = jwtService.generateToken(user, roles, communityId);
 		return new LoginResponse(
 			token,
 			"Bearer",
 			jwtProperties.getAccessTokenTtlSeconds(),
-			user.getId().toString(),
+			user.getId()
+				.toString(),
 			user.getKeycloakUserId(),
 			user.getMobileNumber(),
 			roles

@@ -5,9 +5,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.ria.olita.tech.silingan.entity.OtpVerificationState;
 import com.ria.olita.tech.silingan.repository.OtpVerificationStateRepository;
+import com.ria.olita.tech.silingan.util.ContactNormalizer;
 
 import java.time.Instant;
-import java.util.Objects;
 
 import lombok.RequiredArgsConstructor;
 
@@ -19,30 +19,22 @@ public class OtpVerificationStateServiceImpl implements OtpVerificationStateServ
 
 	@Override
 	@Transactional(readOnly = true)
-	public boolean isVerified(String keycloakUserId, String tokenId) {
-		return otpVerificationStateRepository
-			.findByKeycloakUserIdAndOtpVerifiedTrueAndExpiresAtAfter(keycloakUserId, Instant.now())
-			.stream()
-			.anyMatch(state -> Objects.equals(tokenId, state.getTokenId()));
-	}
-
-	@Override
-	@Transactional(readOnly = true)
-	public boolean isVerifiedForUser(String keycloakUserId) {
-		return otpVerificationStateRepository.existsByKeycloakUserIdAndOtpVerifiedTrueAndExpiresAtAfter(
-			keycloakUserId,
+	public boolean isVerified(String mobileNumber) {
+		String normalizedMobileNumber = ContactNormalizer.normalizeMobileNumber(mobileNumber);
+		return otpVerificationStateRepository.existsByMobileNumberAndOtpVerifiedTrueAndExpiresAtAfter(
+			normalizedMobileNumber,
 			Instant.now()
 		);
 	}
 
 	@Override
 	@Transactional
-	public void markVerified(String keycloakUserId, String tokenId, Instant expiresAt) {
-		clearVerification(keycloakUserId, tokenId);
+	public void markVerified(String mobileNumber, Instant expiresAt) {
+		String normalizedMobileNumber = ContactNormalizer.normalizeMobileNumber(mobileNumber);
+		clearVerification(normalizedMobileNumber);
 
 		OtpVerificationState state = OtpVerificationState.builder()
-			.keycloakUserId(keycloakUserId)
-			.tokenId(tokenId)
+			.mobileNumber(normalizedMobileNumber)
 			.otpVerified(true)
 			.verifiedAt(Instant.now())
 			.expiresAt(expiresAt)
@@ -53,12 +45,8 @@ public class OtpVerificationStateServiceImpl implements OtpVerificationStateServ
 
 	@Override
 	@Transactional
-	public void clearVerification(String keycloakUserId, String tokenId) {
-		if (tokenId == null || tokenId.isBlank()) {
-			otpVerificationStateRepository.deleteByKeycloakUserIdAndTokenIdIsNull(keycloakUserId);
-			return;
-		}
-		otpVerificationStateRepository.deleteByKeycloakUserIdAndTokenId(keycloakUserId, tokenId);
+	public void clearVerification(String mobileNumber) {
+		String normalizedMobileNumber = ContactNormalizer.normalizeMobileNumber(mobileNumber);
+		otpVerificationStateRepository.markUnverifiedByMobileNumber(normalizedMobileNumber);
 	}
 }
-

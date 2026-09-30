@@ -13,10 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
-import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -119,23 +116,6 @@ public class UserContextFilter extends OncePerRequestFilter {
 			.communityAccess(communityAccess)
 			.build();
 		UserContextHolder.set(context);
-	}
-
-	private String resolveKeycloakUserId(Authentication authentication) {
-		if (authentication instanceof JwtAuthenticationToken jwtAuth) {
-			return extractStringClaim(jwtAuth.getToken().getClaims(), "sub");
-		}
-
-		if (authentication instanceof OAuth2AuthenticationToken oauth2Auth) {
-			if (oauth2Auth.getPrincipal() instanceof OidcUser oidcUser) {
-				return extractStringClaim(oidcUser.getClaims(), "sub");
-			}
-			if (oauth2Auth.getPrincipal() instanceof OAuth2User oauth2User) {
-				return extractStringClaim(oauth2User.getAttributes(), "sub");
-			}
-		}
-
-		return null;
 	}
 
 	private CommunityAccess loadCommunityAccess(String userId, UUID communityId) {

@@ -53,10 +53,10 @@ public class OtpController {
 	@PostMapping("/verify")
 	@Operation(summary = "Verify OTP", description = "Verifies OTP for the authenticated user")
 	public ResponseEntity<OtpVerificationResultResponse> verifyOtp(
-		@Valid @RequestBody OtpCodeVerifyRequest request,
+		@Valid @RequestBody OtpVerifyRequest request,
 		HttpServletRequest httpRequest) {
 		log.debug("OTP verification received for authenticated user");
-		return ResponseEntity.ok(otpHandlerService.verifyForAuthenticatedUser(request.otp(), httpRequest));
+		return ResponseEntity.ok(otpHandlerService.verify(request));
 	}
 
 	@GetMapping("/status")

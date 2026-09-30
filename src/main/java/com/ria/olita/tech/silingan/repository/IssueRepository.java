@@ -1,8 +1,9 @@
 package com.ria.olita.tech.silingan.repository;
 
-import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -12,11 +13,11 @@ import com.ria.olita.tech.silingan.entity.IssueStatus;
 @Repository
 public interface IssueRepository extends JpaRepository<Issue, UUID> {
 
-	List<Issue> findByCommunityId(UUID communityId);
+	Page<Issue> findByCommunityId(UUID communityId, Pageable pageable);
 
-	List<Issue> findByCommunityIdAndStatus(UUID communityId, IssueStatus status);
+	Page<Issue> findByCommunityIdAndStatus(UUID communityId, IssueStatus status, Pageable pageable);
 
-	List<Issue> findByCommunityIdAndCategoryId(UUID communityId, UUID categoryId);
+	Page<Issue> findByCommunityIdAndCategoryId(UUID communityId, UUID categoryId, Pageable pageable);
 
-	List<Issue> findByReporterId(UUID reporterId);
+	Page<Issue> findByReporterIdAndCommunityId(UUID reporterId, UUID communityId, Pageable pageable);
 }

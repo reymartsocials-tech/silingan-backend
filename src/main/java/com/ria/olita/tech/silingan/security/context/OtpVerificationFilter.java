@@ -19,6 +19,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ria.olita.tech.silingan.exception.ApiError;
 import com.ria.olita.tech.silingan.service.otp.OtpVerificationStateService;
+import com.ria.olita.tech.silingan.util.ContactNormalizer;
 
 import java.io.IOException;
 import java.util.List;
@@ -58,39 +59,48 @@ public class OtpVerificationFilter extends OncePerRequestFilter {
 
 	@Override
 	protected void doFilterInternal(@NonNull HttpServletRequest request,
-	                                @NonNull HttpServletResponse response,
-	                                @NonNull FilterChain filterChain) throws ServletException, IOException {
+																	@NonNull HttpServletResponse response,
+																	@NonNull FilterChain filterChain) throws ServletException, IOException {
 
 		if (!requiresOtp(request)) {
 			filterChain.doFilter(request, response);
 			return;
 		}
 
-		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		Authentication authentication = SecurityContextHolder.getContext()
+			.getAuthentication();
 		if (!(authentication instanceof JwtAuthenticationToken jwtAuthenticationToken)) {
 			filterChain.doFilter(request, response);
 			return;
 		}
 
 		Jwt jwt = jwtAuthenticationToken.getToken();
-		String keycloakUserId = jwt.getClaimAsString("keycloakId");
-		if (keycloakUserId == null || keycloakUserId.isBlank()) {
-			keycloakUserId = jwt.getClaimAsString("sub");
-		}
-		if (keycloakUserId == null || keycloakUserId.isBlank()) {
+		String mobileNumber = resolveMobileClaim(jwt);
+		if (mobileNumber == null || mobileNumber.isBlank()) {
 			filterChain.doFilter(request, response);
 			return;
 		}
-
-		boolean otpVerified = otpVerificationStateService.isVerified(keycloakUserId, jwt.getId())
-			|| otpVerificationStateService.isVerifiedForUser(keycloakUserId);
+		String normalizedMobileNumber = ContactNormalizer.normalizeMobileNumber(mobileNumber);
+		boolean otpVerified = otpVerificationStateService.isVerified(normalizedMobileNumber);
 		if (otpVerified) {
 			filterChain.doFilter(request, response);
 			return;
 		}
 
-		log.debug("Blocking request {} because OTP is not verified for subject {}", request.getRequestURI(), keycloakUserId);
+		log.debug("Blocking request {} because OTP is not verified for mobile {}", request.getRequestURI(), normalizedMobileNumber);
 		writeOtpRequiredResponse(request, response);
+	}
+
+	private String resolveMobileClaim(Jwt jwt) {
+		String phoneNumber = jwt.getClaimAsString("phone_number");
+		if (phoneNumber != null && !phoneNumber.isBlank()) {
+			return phoneNumber;
+		}
+		String mobileNumber = jwt.getClaimAsString("mobile_number");
+		if (mobileNumber != null && !mobileNumber.isBlank()) {
+			return mobileNumber;
+		}
+		return jwt.getClaimAsString("mobileNumber");
 	}
 
 	private boolean requiresOtp(HttpServletRequest request) {
@@ -108,7 +118,8 @@ public class OtpVerificationFilter extends OncePerRequestFilter {
 			return false;
 		}
 
-		return excludedPatterns.stream().noneMatch(pattern -> pathMatcher.match(pattern, path));
+		return excludedPatterns.stream()
+			.noneMatch(pattern -> pathMatcher.match(pattern, path));
 	}
 
 	private void writeOtpRequiredResponse(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -119,6 +130,4 @@ public class OtpVerificationFilter extends OncePerRequestFilter {
 		objectMapper.writeValue(response.getOutputStream(), error);
 	}
 }
-
-
 

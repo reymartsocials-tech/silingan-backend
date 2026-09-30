@@ -14,10 +14,14 @@ import com.ria.olita.tech.silingan.dto.req.OtpVerifyRequest;
 import com.ria.olita.tech.silingan.dto.res.OtpResendResponse;
 import com.ria.olita.tech.silingan.dto.res.OtpStatusResponse;
 import com.ria.olita.tech.silingan.dto.res.OtpVerificationResultResponse;
+import com.ria.olita.tech.silingan.entity.User;
 import com.ria.olita.tech.silingan.exception.UnauthorizedException;
 import com.ria.olita.tech.silingan.exception.ValidationException;
+import com.ria.olita.tech.silingan.repository.UserRepository;
+import com.ria.olita.tech.silingan.util.ContactNormalizer;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import lombok.RequiredArgsConstructor;
 
@@ -28,14 +32,17 @@ public class OtpHandlerServiceImpl implements OtpHandlerService {
 	private final OtpService otpService;
 	private final OtpVerificationStateService otpVerificationStateService;
 	private final OtpProperties otpProperties;
+	private final UserRepository userRepository;
 
 	@Override
 	public OtpResendResponse resendForAuthenticatedUser(HttpServletRequest request) {
 		JwtPrincipal principal = resolvePrincipal();
-		otpVerificationStateService.clearVerification(principal.keycloakUserId(), principal.tokenId());
+		otpVerificationStateService.clearVerification(principal.mobileNumber());
 
 		var response = otpService.requestOtp(
-			OtpRequest.builder().mobileNumber(principal.mobileNumber()).build(),
+			OtpRequest.builder()
+				.mobileNumber(principal.mobileNumber())
+				.build(),
 			request.getHeader("User-Agent")
 		);
 
@@ -43,21 +50,24 @@ public class OtpHandlerServiceImpl implements OtpHandlerService {
 	}
 
 	@Override
-	public OtpVerificationResultResponse verifyForAuthenticatedUser(String otp, HttpServletRequest request) {
-		JwtPrincipal principal = resolvePrincipal();
+	public OtpVerificationResultResponse verify(OtpVerifyRequest otpVerifyRequest) {
+		String mobileNumber = ContactNormalizer.normalizeMobileNumber(otpVerifyRequest.getMobileNumber());
+		Optional<User> user = userRepository.findByMobileNumber(mobileNumber);
+		if (user.isEmpty()) {
+			throw new ValidationException("No user found for the provided mobile number");
+		}
 
 		otpService.verifyOtp(
 			OtpVerifyRequest.builder()
-				.mobileNumber(principal.mobileNumber())
-				.otp(otp)
+				.mobileNumber(mobileNumber)
+				.otp(otpVerifyRequest.getOtp())
 				.build(),
-			request.getHeader("User-Agent")
+			"system"
 		);
 
 		otpVerificationStateService.markVerified(
-			principal.keycloakUserId(),
-			principal.tokenId(),
-			resolveStateExpiry(principal.jwt())
+			mobileNumber,
+			resolveStateExpiry()
 		);
 
 		return OtpVerificationResultResponse.verified();
@@ -65,45 +75,36 @@ public class OtpHandlerServiceImpl implements OtpHandlerService {
 
 	@Override
 	public OtpStatusResponse statusForAuthenticatedUser() {
-		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		Authentication authentication = SecurityContextHolder.getContext()
+			.getAuthentication();
 		if (authentication == null || !authentication.isAuthenticated()) {
 			return new OtpStatusResponse(false, false);
 		}
 
 		JwtPrincipal principal = resolvePrincipal();
-		boolean verified = otpVerificationStateService.isVerified(principal.keycloakUserId(), principal.tokenId());
+		boolean verified = otpVerificationStateService.isVerified(principal.mobileNumber());
 		return new OtpStatusResponse(true, verified);
 	}
 
-	private Instant resolveStateExpiry(Jwt jwt) {
-		Instant jwtExpiry = jwt.getExpiresAt();
-		if (jwtExpiry != null) {
-			return jwtExpiry;
-		}
-		return Instant.now().plusSeconds(otpProperties.getExpirationMinutes() * 60L);
+	private Instant resolveStateExpiry() {
+		return Instant.now()
+			.plusSeconds(otpProperties.getExpirationMinutes() * 60L);
 	}
 
 	private JwtPrincipal resolvePrincipal() {
-		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		Authentication authentication = SecurityContextHolder.getContext()
+			.getAuthentication();
 		if (!(authentication instanceof JwtAuthenticationToken jwtAuthenticationToken)) {
 			throw new UnauthorizedException("Authentication required");
 		}
 
 		Jwt jwt = jwtAuthenticationToken.getToken();
-		String keycloakUserId = jwt.getClaimAsString("keycloakId");
-		if (keycloakUserId == null || keycloakUserId.isBlank()) {
-			keycloakUserId = jwt.getClaimAsString("sub");
-		}
-		if (keycloakUserId == null || keycloakUserId.isBlank()) {
-			throw new UnauthorizedException("Authenticated token missing 'sub' claim");
-		}
-
 		String mobileNumber = resolveMobileClaim(jwt);
 		if (mobileNumber == null || mobileNumber.isBlank()) {
 			throw new ValidationException("Authenticated token missing mobile number claim");
 		}
 
-		return new JwtPrincipal(keycloakUserId, jwt.getId(), mobileNumber, jwt);
+		return new JwtPrincipal(mobileNumber, jwt);
 	}
 
 	private String resolveMobileClaim(Jwt jwt) {
@@ -120,19 +121,7 @@ public class OtpHandlerServiceImpl implements OtpHandlerService {
 		return jwt.getClaimAsString("mobileNumber");
 	}
 
-	private String getClientIpAddress(HttpServletRequest request) {
-		String xForwardedFor = request.getHeader("X-Forwarded-For");
-		if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-			return xForwardedFor.split(",")[0].trim();
-		}
-		String xRealIp = request.getHeader("X-Real-IP");
-		if (xRealIp != null && !xRealIp.isEmpty()) {
-			return xRealIp;
-		}
-		return request.getRemoteAddr();
-	}
 
-	private record JwtPrincipal(String keycloakUserId, String tokenId, String mobileNumber, Jwt jwt) {
+	private record JwtPrincipal(String mobileNumber, Jwt jwt) {
 	}
 }
-

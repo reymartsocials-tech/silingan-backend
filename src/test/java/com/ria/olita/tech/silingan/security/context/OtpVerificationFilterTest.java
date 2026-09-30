@@ -29,16 +29,14 @@ class OtpVerificationFilterTest {
 	@Test
 	void shouldBlockProtectedPathWhenOtpNotVerified() throws Exception {
 		OtpVerificationStateService stateService = Mockito.mock(OtpVerificationStateService.class);
-		when(stateService.isVerified("kc-user-1", "token-1")).thenReturn(false);
-		when(stateService.isVerifiedForUser("kc-user-1")).thenReturn(false);
+		when(stateService.isVerified("+639171234567")).thenReturn(false);
 
 		OtpVerificationFilter filter = new OtpVerificationFilter(stateService, new ObjectMapper());
 
 		Jwt jwt = Jwt.withTokenValue("token")
 			.header("alg", "none")
-			.subject("kc-user-1")
 			.expiresAt(Instant.now().plusSeconds(300))
-			.claim("jti", "token-1")
+			.claim("mobileNumber", "+639171234567")
 			.claim("scope", "openid")
 			.build();
 		SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
@@ -55,15 +53,14 @@ class OtpVerificationFilterTest {
 	@Test
 	void shouldAllowProtectedPathWhenOtpVerified() throws Exception {
 		OtpVerificationStateService stateService = Mockito.mock(OtpVerificationStateService.class);
-		when(stateService.isVerified("kc-user-1", "token-1")).thenReturn(true);
+		when(stateService.isVerified("+639171234567")).thenReturn(true);
 
 		OtpVerificationFilter filter = new OtpVerificationFilter(stateService, new ObjectMapper());
 
 		Jwt jwt = Jwt.withTokenValue("token")
 			.header("alg", "none")
-			.subject("kc-user-1")
 			.expiresAt(Instant.now().plusSeconds(300))
-			.claim("jti", "token-1")
+			.claim("mobileNumber", "+639171234567")
 			.claim("scope", "openid")
 			.build();
 		SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
@@ -80,16 +77,14 @@ class OtpVerificationFilterTest {
 	@Test
 	void shouldBypassOtpCheckForOtpEndpoints() throws Exception {
 		OtpVerificationStateService stateService = Mockito.mock(OtpVerificationStateService.class);
-		when(stateService.isVerified("kc-user-1", "token-1")).thenReturn(false);
-		when(stateService.isVerifiedForUser("kc-user-1")).thenReturn(false);
+		when(stateService.isVerified("+639171234567")).thenReturn(false);
 
 		OtpVerificationFilter filter = new OtpVerificationFilter(stateService, new ObjectMapper());
 
 		Jwt jwt = Jwt.withTokenValue("token")
 			.header("alg", "none")
-			.subject("kc-user-1")
 			.expiresAt(Instant.now().plusSeconds(300))
-			.claim("jti", "token-1")
+			.claim("mobileNumber", "+639171234567")
 			.claim("scope", "openid")
 			.build();
 		SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
@@ -110,9 +105,8 @@ class OtpVerificationFilterTest {
 
 		Jwt jwt = Jwt.withTokenValue("token")
 			.header("alg", "none")
-			.subject("kc-user-1")
 			.expiresAt(Instant.now().plusSeconds(300))
-			.claim("jti", "token-1")
+			.claim("mobileNumber", "+639171234567")
 			.claim("scope", "openid")
 			.build();
 		SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
@@ -127,18 +121,14 @@ class OtpVerificationFilterTest {
 	}
 
 	@Test
-	void shouldAllowProtectedPathWhenUserLevelOtpVerificationExists() throws Exception {
+	void shouldAllowProtectedPathWhenMobileClaimMissing() throws Exception {
 		OtpVerificationStateService stateService = Mockito.mock(OtpVerificationStateService.class);
-		when(stateService.isVerified("kc-user-1", "token-2")).thenReturn(false);
-		when(stateService.isVerifiedForUser("kc-user-1")).thenReturn(true);
 
 		OtpVerificationFilter filter = new OtpVerificationFilter(stateService, new ObjectMapper());
 
 		Jwt jwt = Jwt.withTokenValue("token")
 			.header("alg", "none")
-			.subject("kc-user-1")
 			.expiresAt(Instant.now().plusSeconds(300))
-			.claim("jti", "token-2")
 			.claim("scope", "openid")
 			.build();
 		SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
@@ -152,4 +142,3 @@ class OtpVerificationFilterTest {
 		assertThat(response.getStatus()).isEqualTo(200);
 	}
 }
-

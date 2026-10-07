@@ -24,6 +24,11 @@ public enum InvitationType {
 		"staff-invitation",
 		"Staff Invitation",
 		"You have been invited to join {communityName} as a staff member."
+	),
+	ADMIN(
+		"admin-invitation",
+		"Administrator Invitation",
+		"You have been invited to administer {communityName}."
 	);
 
 	private final String emailTemplate;

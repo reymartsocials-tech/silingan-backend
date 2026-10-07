@@ -77,6 +77,23 @@ public interface KeycloakService {
 	 */
 	String createInvitationUser(String email, String firstName, String lastName);
 
+	/**
+	 * Create (or reuse) a Keycloak user for an invitation and assign realm roles in a single operation.
+	 *
+	 * @param email invitee email, also used as the username
+	 * @param realmRoles list of realm roles to assign
+	 * @return the Keycloak user ID
+	 */
+	String createInvitationUserWithRoles(String email, List<String> realmRoles);
+
 	boolean isInvitationCompleted(String keycloakUserId, List<String> requiredActions);
+
+	/**
+	 * Fetch user profile details from Keycloak.
+	 *
+	 * @param keycloakUserId the Keycloak user ID
+	 * @return a map with keys: firstName, lastName, email, mobileNumber (if available)
+	 */
+	Map<String, String> getUserProfile(String keycloakUserId);
 
 }

@@ -3,24 +3,21 @@ package com.ria.olita.tech.silingan.dto.res;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-import com.ria.olita.tech.silingan.entity.StaffInvitationStatus;
 import com.ria.olita.tech.silingan.entity.rbac.StaffRoleCode;
 
-public record StaffInvitationResponse(
+import lombok.Builder;
+
+@Builder
+public record InvitationSummaryResponse(
 	UUID invitationId,
-	UUID communityId,
-	String firstName,
-	String lastName,
 	String email,
-	String mobileNumber,
-	String position,
+	String invitedName,
 	StaffRoleCode roleCode,
-	StaffInvitationStatus status,
+	String status,
 	LocalDateTime invitedAt,
 	LocalDateTime expiresAt,
 	LocalDateTime acceptedAt,
-	LocalDateTime revokedAt,
 	String invitedByName,
-	String notes
+	UUID communityId
 ) {
 }

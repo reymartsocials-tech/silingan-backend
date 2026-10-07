@@ -1,19 +1,18 @@
 package com.ria.olita.tech.silingan.service;
 
-import com.ria.olita.tech.silingan.entity.StaffInvitation;
+import com.ria.olita.tech.silingan.entity.Invitation;
 
 /**
- * Service for sending emails to staff members.
+ * Service for sending emails to users.
  * Implementations should handle async email delivery.
  */
 public interface EmailService {
 
 	/**
-	 * Send staff invitation email.
+	 * Send invitation email for staff or admin users.
 	 * Should be called asynchronously.
 	 *
-	 * @param invitation the staff invitation
-	 * @param invitationLink the link to activate the invitation
+	 * @param invitation the invitation (staff or admin)
 	 */
-	void sendStaffInvitationEmail(StaffInvitation invitation, String invitationLink);
+	void sendInvitationEmail(Invitation invitation);
 }

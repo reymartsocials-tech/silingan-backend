@@ -2,17 +2,12 @@ package com.ria.olita.tech.silingan.service.impl;
 
 import com.ria.olita.tech.silingan.dto.req.CreateCommunityRequest;
 import com.ria.olita.tech.silingan.dto.req.UpdateCommunityRequest;
-import com.ria.olita.tech.silingan.dto.res.AssignCommunityAdministratorResponse;
-import com.ria.olita.tech.silingan.dto.res.CommunityAdminInvitationStatusResponse;
 import com.ria.olita.tech.silingan.dto.res.CommunityCodeResponse;
 import com.ria.olita.tech.silingan.dto.res.CommunityResponse;
 import com.ria.olita.tech.silingan.entity.Address;
-import com.ria.olita.tech.silingan.entity.CommunityAdminInvitation;
-import com.ria.olita.tech.silingan.entity.CommunityAdminInvitationStatus;
 import com.ria.olita.tech.silingan.entity.Community;
 import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.CommunityType;
-import com.ria.olita.tech.silingan.entity.InvitationType;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.exception.ForbiddenException;
@@ -21,7 +16,6 @@ import com.ria.olita.tech.silingan.exception.ValidationException;
 import com.ria.olita.tech.silingan.mapper.AddressMapper;
 import com.ria.olita.tech.silingan.mapper.CommunityMapper;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
-import com.ria.olita.tech.silingan.repository.CommunityAdminInvitationRepository;
 import com.ria.olita.tech.silingan.repository.TenantRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
@@ -30,15 +24,13 @@ import com.ria.olita.tech.silingan.service.CommunityCodeService;
 import com.ria.olita.tech.silingan.service.CommunityService;
 import com.ria.olita.tech.silingan.service.KeycloakService;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -51,10 +43,13 @@ public class CommunityServiceImpl implements CommunityService {
 
 	private final CommunityRepository communityRepository;
 	private static final List<String> ADMIN_REQUIRED_ACTIONS = List.of("VERIFY_EMAIL", "UPDATE_PROFILE", "UPDATE_PASSWORD");
+
+	@Value("${app.invitations.expiry-days:7}")
+	private int invitationExpiryDays;
+
 	private final TenantRepository tenantRepository;
 	private final UserRepository userRepository;
 	private final UserCommunityRepository userCommunityRepository;
-	private final CommunityAdminInvitationRepository communityAdminInvitationRepository;
 	private final CommunityMapper communityMapper;
 	private final AddressMapper addressMapper;
 	private final KeycloakService keycloakService;
@@ -219,7 +214,7 @@ public class CommunityServiceImpl implements CommunityService {
 				throw new ForbiddenException("Invalid authenticated user context");
 			}
 
-			if (userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId).isEmpty()) {
+			if (userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, communityId).isEmpty()) {
 				throw new ForbiddenException("You do not have access to this community");
 			}
 		}
@@ -229,85 +224,6 @@ public class CommunityServiceImpl implements CommunityService {
 				.keycloakUserId(),
 			Map.of("communityId", List.of(communityId.toString()))
 		);
-	}
-
-	@Override
-	public AssignCommunityAdministratorResponse assignAdministrator(UUID communityId, String email) {
-		Community community = communityRepository.findById(communityId)
-			.orElseThrow(() -> new NotFoundException("Community not found with id = " + communityId));
-
-		if (userCommunityRepository.hasRoleInCommunity(communityId, SilinganRealmRole.COMMUNITY_ADMIN)) {
-			throw new ConflictException("Community already has a COMMUNITY_ADMIN assigned");
-		}
-
-		String normalizedEmail = email.trim()
-			.toLowerCase(Locale.ROOT);
-		if (communityAdminInvitationRepository.existsByCommunityIdAndStatus(communityId, CommunityAdminInvitationStatus.PENDING)) {
-			throw new ConflictException("Community already has a pending administrator invitation");
-		}
-
-		String keycloakUserId = keycloakService.createInvitationUser(normalizedEmail);
-		keycloakService.updateUserAttributes(
-			keycloakUserId,
-			Map.of(
-				"communityId", List.of(communityId.toString()),
-				"communityName", List.of(community.getName())
-			)
-		);
-		keycloakService.sendRequiredActionsEmail(
-			keycloakUserId,
-			ADMIN_REQUIRED_ACTIONS,
-			InvitationType.RESIDENT
-		);
-
-		CommunityAdminInvitation invitation = CommunityAdminInvitation.builder()
-			.community(community)
-			.email(normalizedEmail)
-			.keycloakUserId(keycloakUserId)
-			.status(CommunityAdminInvitationStatus.PENDING)
-			.build();
-		communityAdminInvitationRepository.save(invitation);
-
-		return AssignCommunityAdministratorResponse.invitationSent(normalizedEmail);
-	}
-
-	@Override
-	@Transactional(readOnly = true)
-	public Page<CommunityAdminInvitationStatusResponse> getAdministratorInvitations(
-		UUID communityId,
-		CommunityAdminInvitationStatus status,
-		Pageable pageable
-	) {
-		if (communityId != null && !communityRepository.existsById(communityId)) {
-			throw new NotFoundException("Community not found with id = " + communityId);
-		}
-
-		if (communityId == null) {
-			return communityAdminInvitationRepository.findByFilters(status, pageable)
-				.map(invitation -> new CommunityAdminInvitationStatusResponse(
-					invitation.getId(),
-					invitation.getCommunity()
-						.getId(),
-					invitation.getCommunity()
-						.getName(),
-					invitation.getEmail(),
-					invitation.getStatus(),
-					invitation.getInvitedAt(),
-					invitation.getAcceptedAt()
-				));
-		}
-		return communityAdminInvitationRepository.findByFilters(communityId, status, pageable)
-			.map(invitation -> new CommunityAdminInvitationStatusResponse(
-				invitation.getId(),
-				invitation.getCommunity()
-					.getId(),
-				invitation.getCommunity()
-					.getName(),
-				invitation.getEmail(),
-				invitation.getStatus(),
-				invitation.getInvitedAt(),
-				invitation.getAcceptedAt()
-			));
 	}
 
 	@Override

@@ -1,6 +1,9 @@
 package com.ria.olita.tech.silingan.dto.res;
 
-public record StaffInvitationSummaryResponse(
+import lombok.Builder;
+
+@Builder
+public record InvitationStatsResponse(
 	long total,
 	long pending,
 	long accepted,

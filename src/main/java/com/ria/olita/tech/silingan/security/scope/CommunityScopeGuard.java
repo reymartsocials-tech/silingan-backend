@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
+import com.ria.olita.tech.silingan.domain.CommunityId;
 import com.ria.olita.tech.silingan.exception.ForbiddenException;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.security.context.UserContext;
@@ -81,6 +82,20 @@ public class CommunityScopeGuard {
 			throw new ForbiddenException("Invalid authenticated user context");
 		}
 
-		return userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId).isPresent();
+		return userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, communityId).isPresent();
+	}
+
+	/**
+	 * Overload for CommunityId domain type. Delegates to UUID version.
+	 */
+	public void assertAccess(CommunityId communityId) {
+		assertAccess(communityId == null ? null : communityId.getValue());
+	}
+
+	/**
+	 * Overload for CommunityId domain type. Delegates to UUID version.
+	 */
+	public boolean hasAccess(CommunityId communityId) {
+		return hasAccess(communityId == null ? null : communityId.getValue());
 	}
 }

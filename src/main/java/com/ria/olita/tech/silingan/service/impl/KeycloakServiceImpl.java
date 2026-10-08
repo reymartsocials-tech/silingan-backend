@@ -2,18 +2,19 @@ package com.ria.olita.tech.silingan.service.impl;
 
 import com.ria.olita.tech.silingan.config.KeycloakProperties;
 import com.ria.olita.tech.silingan.dto.req.CreateUserRequest;
+import com.ria.olita.tech.silingan.entity.InvitationType;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.service.KeycloakService;
+import com.ria.olita.tech.silingan.service.email.EmailTemplateSelector;
+import com.ria.olita.tech.silingan.service.email.InvitationEmailContext;
 
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.BadRequestException;
 import lombok.RequiredArgsConstructor;
 
-import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
-import org.keycloak.admin.client.KeycloakBuilder;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
@@ -38,6 +39,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class KeycloakServiceImpl implements KeycloakService {
 	private final UserCommunityRepository userCommunityRepository;
+	private final EmailTemplateSelector emailTemplateSelector;
+
+	/**
+	 * Shared admin client (see {@code KeycloakClientConfig}). Reusing one instance keeps the
+	 * connection pool and the cached service-account token alive across calls; building one per
+	 * call cost a TLS handshake plus a token request every time and leaked the pool.
+	 */
+	private final Keycloak keycloak;
+
 	private static final List<String> ADMIN_INVITATION_REQUIRED_ACTIONS = List.of(
 		"VERIFY_EMAIL",
 		"UPDATE_PROFILE",
@@ -52,26 +62,28 @@ public class KeycloakServiceImpl implements KeycloakService {
 	@Override
 	public String createUser(CreateUserRequest request, UUID communityId) {
 		log.info("Creating user in Keycloak: {}", request.username());
-		log.debug("CreateUserRequest details - enabled: {}, emailVerified: {}, communityRole: {}", 
+		log.debug("CreateUserRequest details - enabled: {}, emailVerified: {}, communityRole: {}",
 			request.enabled(), request.emailVerified(), request.communityRole());
 
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UsersResource usersResource = realmResource.users();
 
 		// Create user representation
 		UserRepresentation user = new UserRepresentation();
 		user.setUsername(request.username());
-		if (request.email() != null && !request.email().isBlank()) {
+		if (request.email() != null && !request.email()
+			.isBlank()) {
 			user.setEmail(request.email());
 			user.setEmailVerified(request.emailVerified());
-		}		user.setFirstName(request.firstName());
+		}
+		user.setFirstName(request.firstName());
 		user.setLastName(request.lastName());
 		user.setEnabled(request.enabled());
 		user.setEmailVerified(request.emailVerified());
 		user.setRequiredActions(Collections.emptyList());
 
-		if (request.password() != null && !request.password().isBlank()) {
+		if (request.password() != null && !request.password()
+			.isBlank()) {
 			CredentialRepresentation credential = new CredentialRepresentation();
 			credential.setType(CredentialRepresentation.PASSWORD);
 			credential.setValue(request.password());
@@ -93,10 +105,12 @@ public class KeycloakServiceImpl implements KeycloakService {
 			updateUserAttributes(userId, keycloakAttributes);
 
 			if (request.communityRole() != null) {
-				if (request.communityRole().equals(SilinganRealmRole.COMMUNITY_ADMIN) && userCommunityRepository.hasRoleInCommunity(communityId, request.communityRole())) {
+				if (request.communityRole()
+					.equals(SilinganRealmRole.COMMUNITY_ADMIN) && userCommunityRepository.hasRoleInCommunity(communityId, request.communityRole())) {
 					throw new ConflictException("Community already has a COMMUNITY_ADMIN assigned");
 				}
-				assignRealmRole(realmResource, userId, request.communityRole().name());
+				assignRealmRole(realmResource, userId, request.communityRole()
+					.name());
 			} else {
 				// Assign default RESIDENT role to the user
 				assignRealmRole(realmResource, userId, SilinganRealmRole.RESIDENT.name());
@@ -110,20 +124,6 @@ public class KeycloakServiceImpl implements KeycloakService {
 			log.error(errorMessage);
 			throw new RuntimeException(errorMessage);
 		}
-	}
-
-	private Keycloak getKeycloakClient() {
-
-		log.debug("Building Keycloak admin client for realm {} using clientId {}",
-			keycloakProperties.getRealm(), keycloakProperties.getClientId());
-
-		return KeycloakBuilder.builder()
-			.serverUrl(keycloakProperties.getUrl())
-			.realm(keycloakProperties.getRealm())
-			.clientId(keycloakProperties.getClientId())
-			.clientSecret(keycloakProperties.getClientSecret())
-			.grantType(OAuth2Constants.CLIENT_CREDENTIALS)
-			.build();
 	}
 
 	private String extractUserId(Response response) {
@@ -164,7 +164,6 @@ public class KeycloakServiceImpl implements KeycloakService {
 	}
 
 	public List<UserRepresentation> searchUsers(String username) {
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UsersResource usersResource = realmResource.users();
 		return usersResource.search(username, true);
@@ -174,7 +173,6 @@ public class KeycloakServiceImpl implements KeycloakService {
 	public void updateUserAttributes(String userId, Map<String, List<String>> attributes) {
 		log.info("Updating attributes for user: {}", userId);
 
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UsersResource usersResource = realmResource.users();
 
@@ -209,11 +207,30 @@ public class KeycloakServiceImpl implements KeycloakService {
 		log.info("User attributes updated successfully for user: {}", userId);
 	}
 
+	/**
+	 * Write the Silingan invitation context onto the Keycloak user as user attributes.
+	 *
+	 * <p>These attributes are what the custom email theme reads in
+	 * {@code email/html/executeActions.ftl} to decide which invitation content to render.
+	 * They must be declared in the realm user profile
+	 * ({@code keycloak/config/silingan-user-profile.json}); otherwise Keycloak 26 silently
+	 * discards them as unmanaged attributes and every invitation falls back to the default
+	 * template.
+	 *
+	 * @param keycloakUserId the Keycloak user ID
+	 * @param context        the invitation context to expose to the email theme
+	 */
+	private void applyInvitationAttributes(String keycloakUserId, InvitationEmailContext context) {
+		Map<String, List<String>> attributes = context.toKeycloakAttributes();
+		updateUserAttributes(keycloakUserId, attributes);
+		log.info("Applied invitation attributes to user {}: {}", keycloakUserId, attributes);
+	}
+
 	@Override
 	public List<String> getRealmRoles(String keycloakUserId) {
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
-		UserResource userResource = realmResource.users().get(keycloakUserId);
+		UserResource userResource = realmResource.users()
+			.get(keycloakUserId);
 
 		return userResource.roles()
 			.realmLevel()
@@ -225,7 +242,6 @@ public class KeycloakServiceImpl implements KeycloakService {
 
 	@Override
 	public boolean isUserEnabled(String keycloakUserId) {
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UserRepresentation userRepresentation = realmResource.users()
 			.get(keycloakUserId)
@@ -240,7 +256,6 @@ public class KeycloakServiceImpl implements KeycloakService {
 
 	@Override
 	public Optional<String> findUserIdByEmail(String email) {
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UsersResource usersResource = realmResource.users();
 
@@ -252,42 +267,69 @@ public class KeycloakServiceImpl implements KeycloakService {
 
 	@Override
 	public void assignRealmRole(String keycloakUserId, String roleName) {
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		assignRealmRole(realmResource, keycloakUserId, roleName);
 	}
 
 	@Override
 	public void sendRequiredActionsEmail(String keycloakUserId, List<String> requiredActions) {
-		Keycloak keycloak = getKeycloakClient();
+		sendRequiredActionsEmail(keycloakUserId, requiredActions, InvitationType.RESIDENT);
+	}
+
+	@Override
+	public void sendRequiredActionsEmail(String keycloakUserId, List<String> requiredActions,
+																			 InvitationType invitationType) {
+		sendInvitationEmail(keycloakUserId, requiredActions, InvitationEmailContext.forType(invitationType));
+	}
+
+	@Override
+	public void sendInvitationEmail(String keycloakUserId, List<String> requiredActions,
+																	InvitationEmailContext context) {
+		InvitationEmailContext effectiveContext = context != null
+			? context
+			: InvitationEmailContext.forType(InvitationType.RESIDENT);
+		InvitationType invitationType = effectiveContext.invitationType();
+
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
-		UserResource userResource = realmResource.users().get(keycloakUserId);
+		UserResource userResource = realmResource.users()
+			.get(keycloakUserId);
 
 		try {
+			String templateName = emailTemplateSelector.getTemplate(invitationType);
+			String displayName = emailTemplateSelector.getDisplayName(invitationType);
+
+			// The email theme renders executeActions.ftl and branches on these attributes,
+			// so they must be stored before executeActionsEmail() is called.
+			applyInvitationAttributes(keycloakUserId, effectiveContext);
+
 			String redirectClientId = keycloakProperties.getInvitationRedirectClientId();
 			String redirectUri = keycloakProperties.getInvitationRedirectUri();
 			Integer lifespanSeconds = keycloakProperties.getInvitationLifespanSeconds();
 
 			if (isNotBlank(redirectClientId) && isNotBlank(redirectUri)) {
-				log.info("Sending required-actions email with redirect to {} using client {}", redirectUri, redirectClientId);
+				log.info("Sending {} email (template={}) with redirect to {} using client {}",
+					displayName, templateName, redirectUri, redirectClientId);
 				try {
-					userResource.executeActionsEmail(redirectClientId, redirectUri, lifespanSeconds, requiredActions);
+					userResource.executeActionsEmail(redirectClientId, redirectUri, lifespanSeconds,
+						requiredActions);
 					return;
 				} catch (BadRequestException badRequestException) {
 					log.warn(
 						"Keycloak rejected redirect-based actions email (clientId={}, redirectUri={}). Falling back to default actions email. " +
-						"Ensure redirect URI is allowed for the client in Keycloak.",
+							"Ensure redirect URI is allowed for the client in Keycloak.",
 						redirectClientId,
 						redirectUri
 					);
 				}
 			}
 
-			log.info("Sending required-actions email without explicit redirect configuration");
+			log.info("Sending {} email (template={}) without explicit redirect configuration",
+				displayName, templateName);
 			userResource.executeActionsEmail(requiredActions);
 		} catch (Exception e) {
-			log.error("Error sending required actions email to user {}", keycloakUserId, e);
-			throw new RuntimeException("Failed to send administrator invitation email", e);
+			String displayName = emailTemplateSelector.getDisplayName(invitationType);
+			log.error("Error sending {} to user {}", displayName, keycloakUserId, e);
+			throw new RuntimeException("Failed to send " + displayName, e);
 		}
 	}
 
@@ -297,13 +339,23 @@ public class KeycloakServiceImpl implements KeycloakService {
 
 	@Override
 	public String createInvitationUser(String email) {
-		Keycloak keycloak = getKeycloakClient();
+		return createInvitationUser(email, null, null);
+	}
+
+	@Override
+	public String createInvitationUser(String email, String firstName, String lastName) {
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UsersResource usersResource = realmResource.users();
 
 		UserRepresentation user = new UserRepresentation();
 		user.setUsername(email.toLowerCase());
 		user.setEmail(email.toLowerCase());
+		if (isNotBlank(firstName)) {
+			user.setFirstName(firstName);
+		}
+		if (isNotBlank(lastName)) {
+			user.setLastName(lastName);
+		}
 		user.setEnabled(true);
 		user.setEmailVerified(false);
 		user.setRequiredActions(ADMIN_INVITATION_REQUIRED_ACTIONS);
@@ -331,8 +383,20 @@ public class KeycloakServiceImpl implements KeycloakService {
 	}
 
 	@Override
+	public String createInvitationUserWithRoles(String email, List<String> realmRoles) {
+		String userId = createInvitationUser(email, null, null);
+
+		if (realmRoles != null && !realmRoles.isEmpty()) {
+			for (String roleName : realmRoles) {
+				assignRealmRole(userId, roleName);
+			}
+		}
+
+		return userId;
+	}
+
+	@Override
 	public boolean isInvitationCompleted(String keycloakUserId, List<String> requiredActions) {
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UserRepresentation userRepresentation = realmResource.users()
 			.get(keycloakUserId)
@@ -343,14 +407,16 @@ public class KeycloakServiceImpl implements KeycloakService {
 			return false;
 		}
 
-		List<String> pendingActions = Optional.ofNullable(userRepresentation.getRequiredActions()).orElse(List.of());
+		List<String> pendingActions = Optional.ofNullable(userRepresentation.getRequiredActions())
+			.orElse(List.of());
 		log.debug("Invitation completion check: user={} pendingActions={} trackedActions={}", keycloakUserId, pendingActions, requiredActions);
 		if (pendingActions.isEmpty()) {
 			log.debug("Invitation completion check: user={} complete (no pending actions)", keycloakUserId);
 			return true;
 		}
 
-		Set<String> trackedActions = new HashSet<>(Optional.ofNullable(requiredActions).orElse(List.of()));
+		Set<String> trackedActions = new HashSet<>(Optional.ofNullable(requiredActions)
+			.orElse(List.of()));
 		for (String action : pendingActions) {
 			if (trackedActions.contains(action)) {
 				log.debug("Invitation completion check: user={} incomplete due to pending tracked action={}", keycloakUserId, action);
@@ -364,7 +430,6 @@ public class KeycloakServiceImpl implements KeycloakService {
 
 	@Override
 	public Map<String, List<String>> getUserAttributes(String keycloakUserId) {
-		Keycloak keycloak = getKeycloakClient();
 		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
 		UserRepresentation userRepresentation = realmResource.users()
 			.get(keycloakUserId)
@@ -376,5 +441,34 @@ public class KeycloakServiceImpl implements KeycloakService {
 
 		Map<String, List<String>> attributes = userRepresentation.getAttributes();
 		return attributes != null ? attributes : Map.of();
+	}
+
+	@Override
+	public Map<String, String> getUserProfile(String keycloakUserId) {
+		RealmResource realmResource = keycloak.realm(keycloakProperties.getRealm());
+		UserRepresentation userRepresentation = realmResource.users()
+			.get(keycloakUserId)
+			.toRepresentation();
+
+		if (userRepresentation == null) {
+			throw new RuntimeException("User not found with ID: " + keycloakUserId);
+		}
+
+		Map<String, String> profile = new java.util.HashMap<>();
+		profile.put("email", userRepresentation.getEmail());
+		profile.put("firstName", userRepresentation.getFirstName());
+		profile.put("lastName", userRepresentation.getLastName());
+		profile.put("username", userRepresentation.getUsername());
+
+		// Try to get mobileNumber from attributes if present
+		Map<String, List<String>> attributes = userRepresentation.getAttributes();
+		if (attributes != null && attributes.containsKey("mobileNumber")) {
+			List<String> mobileList = attributes.get("mobileNumber");
+			if (!mobileList.isEmpty()) {
+				profile.put("mobileNumber", mobileList.get(0));
+			}
+		}
+
+		return profile;
 	}
 }

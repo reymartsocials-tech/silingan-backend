@@ -34,4 +34,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	           WHERE u.keycloakUserId = ?1
 	       """)
 	Optional<String> getUserIdByKeycloakUserId(String keycloakUserId);
+
+	Optional<User> findByEmail(String email);
 }

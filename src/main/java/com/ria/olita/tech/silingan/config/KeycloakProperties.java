@@ -22,4 +22,11 @@ public class KeycloakProperties {
 	private String invitationRedirectClientId;
 	private String invitationRedirectUri;
 	private Integer invitationLifespanSeconds;
+
+	/**
+	 * Bounds on the admin client's HTTP calls. Keycloak sits on the request path (invitation
+	 * activation runs in a servlet filter), so an unbounded wait here stalls the whole request.
+	 */
+	private int connectTimeoutMs = 3000;
+	private int readTimeoutMs = 5000;
 }

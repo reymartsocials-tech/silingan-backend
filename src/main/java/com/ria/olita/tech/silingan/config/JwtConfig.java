@@ -1,10 +1,13 @@
 package com.ria.olita.tech.silingan.config;
 
+import java.time.Duration;
+
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -13,11 +16,22 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.web.client.RestOperations;
+import org.springframework.web.client.RestTemplate;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
 @Configuration
 public class JwtConfig {
+
+	/**
+	 * The JWK set is cached, but the cache still has to be refreshed periodically and is populated
+	 * lazily on the first request after startup. Those refreshes happen inline on a request thread,
+	 * so the fetch must be bounded - Spring's default {@code RestTemplate} has no timeouts at all,
+	 * which lets an unresponsive Keycloak hang the request indefinitely.
+	 */
+	private static final Duration JWK_CONNECT_TIMEOUT = Duration.ofSeconds(3);
+	private static final Duration JWK_READ_TIMEOUT = Duration.ofSeconds(5);
 
 	@Bean
 	public SecretKey jwtSecretKey(JwtProperties jwtProperties) {
@@ -41,9 +55,18 @@ public class JwtConfig {
 		String jwkSetUri = buildKeycloakJwkSetUri(keycloakProperties);
 		String issuer = buildKeycloakIssuer(keycloakProperties);
 
-		NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+		NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
+			.restOperations(jwkSetRestOperations())
+			.build();
 		decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuer));
 		return decoder;
+	}
+
+	private RestOperations jwkSetRestOperations() {
+		SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+		requestFactory.setConnectTimeout(JWK_CONNECT_TIMEOUT);
+		requestFactory.setReadTimeout(JWK_READ_TIMEOUT);
+		return new RestTemplate(requestFactory);
 	}
 
 	@Bean

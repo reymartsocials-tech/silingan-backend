@@ -167,7 +167,7 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 
 		staffGrantGuard.assertNotSelf(userId, "change the staff role");
 
-		UserCommunity membership = userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId)
+		UserCommunity membership = userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, communityId)
 			.orElseThrow(() -> new NotFoundException("User is not an active member of the community"));
 
 		if (membership.getRole() != SilinganRealmRole.STAFF && membership.getRole() != SilinganRealmRole.COMMUNITY_ADMIN) {

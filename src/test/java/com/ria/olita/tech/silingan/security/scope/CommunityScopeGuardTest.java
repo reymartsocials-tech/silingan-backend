@@ -51,7 +51,7 @@ class CommunityScopeGuardTest {
 		UUID otherCommunity = UUID.randomUUID();
 		UUID userId = givenCaller(SilinganRealmRole.COMMUNITY_ADMIN, ownCommunity);
 
-		when(userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, otherCommunity))
+		when(userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, otherCommunity))
 			.thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> scopeGuard.assertAccess(otherCommunity))
@@ -64,7 +64,7 @@ class CommunityScopeGuardTest {
 		UUID ownCommunity = UUID.randomUUID();
 		UUID userId = givenCaller(SilinganRealmRole.COMMUNITY_ADMIN, ownCommunity);
 
-		when(userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, ownCommunity))
+		when(userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, ownCommunity))
 			.thenReturn(Optional.of(UserCommunity.builder().build()));
 
 		assertThatCode(() -> scopeGuard.assertAccess(ownCommunity)).doesNotThrowAnyException();
@@ -75,7 +75,7 @@ class CommunityScopeGuardTest {
 		UUID spoofed = UUID.randomUUID();
 		UUID userId = givenCaller(SilinganRealmRole.STAFF, spoofed);
 
-		when(userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, spoofed))
+		when(userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, spoofed))
 			.thenReturn(Optional.empty());
 
 		assertThat(scopeGuard.hasAccess(spoofed)).isFalse();
@@ -100,7 +100,7 @@ class CommunityScopeGuardTest {
 	void shouldBlockGrantingPermissionsCallerDoesNotHold() {
 		UUID communityId = UUID.randomUUID();
 		UUID userId = givenCaller(SilinganRealmRole.STAFF, communityId);
-		when(userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId))
+		when(userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, communityId))
 			.thenReturn(Optional.of(UserCommunity.builder().build()));
 
 		Set<PermissionEnum> held = EnumSet.of(PermissionEnum.REPORT_VIEW);
@@ -115,7 +115,7 @@ class CommunityScopeGuardTest {
 	void shouldAllowGrantingSubsetOfHeldPermissions() {
 		UUID communityId = UUID.randomUUID();
 		UUID userId = givenCaller(SilinganRealmRole.STAFF, communityId);
-		when(userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId))
+		when(userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, communityId))
 			.thenReturn(Optional.of(UserCommunity.builder().build()));
 
 		Set<PermissionEnum> held = EnumSet.of(PermissionEnum.REPORT_VIEW, PermissionEnum.REPORT_MANAGE);
@@ -138,7 +138,7 @@ class CommunityScopeGuardTest {
 	void shouldReserveCommunityAdminRoleForAdministrators() {
 		UUID communityId = UUID.randomUUID();
 		UUID userId = givenCaller(SilinganRealmRole.STAFF, communityId);
-		when(userCommunityRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId))
+		when(userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, communityId))
 			.thenReturn(Optional.of(UserCommunity.builder().build()));
 
 		assertThatThrownBy(() -> grantGuard.assertCanAssignRole(

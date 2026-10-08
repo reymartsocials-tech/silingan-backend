@@ -39,9 +39,8 @@ class JwtServiceImplTest {
 			.macAlgorithm(MacAlgorithm.HS256)
 			.build();
 		decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(properties.getIssuer()));
-		JwtDecoder jwtDecoder = decoder;
 
-		jwtService = new JwtServiceImpl(jwtEncoder, jwtDecoder, properties);
+		jwtService = new JwtServiceImpl(jwtEncoder, decoder, properties);
 	}
 
 	@Test
@@ -61,7 +60,7 @@ class JwtServiceImplTest {
 		assertTrue(jwtService.validate(token));
 
 		Jwt decoded = jwtService.parse(token).orElseThrow();;
-		assertEquals(user.getId().toString(), decoded.getSubject());
+		assertEquals(user.getId().toString(), decoded.getClaimAsString("userId"));
 		assertEquals("kc-user-123", decoded.getClaimAsString("keycloakId"));
 		assertEquals("+639171234567", decoded.getClaimAsString("mobileNumber"));
 		assertEquals(List.of("CUSTOMER"), decoded.getClaimAsStringList("roles"));

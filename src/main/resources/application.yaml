@@ -14,6 +14,13 @@ spring:
       # Flyway owns the schema. Hibernate only asserts the entities match it.
       # Local profile overrides this to 'create-drop' (see bottom of file).
       ddl-auto: validate
+    # Deliberately left at the default (true). UserContextFilter enables the Hibernate
+    # "communityFilter" tenant-isolation filter on the request-bound session; with
+    # open-in-view off no session exists at filter time and the isolation silently stops
+    # applying to Announcement/Issue/Media. See the note in UserContextFilter before changing.
+    # Note that Hibernate still releases the JDBC connection after each transaction, so this
+    # does not pin a pool connection for the whole request.
+    open-in-view: true
     show-sql: true
     properties:
       hibernate:
@@ -75,7 +82,7 @@ keycloak:
 # ============================================
 server:
   # SERVER_PORT - Port the application listens on
-  port: ${SERVER_PORT:8082}
+  port: ${SERVER_PORT:8083}
 
 # ============================================
 # Logging Configuration
@@ -114,6 +121,22 @@ sms:
 
 
 # ============================================
+# Invitation handling
+# ============================================
+app:
+  invitations:
+    expiry-days: ${INVITATION_EXPIRY_DAYS:7}
+    activation-gate:
+      # How long a "nothing left to activate" result is trusted before the checks run again.
+      # New invitations invalidate the entry directly, so this only bounds the case where that
+      # invalidation did not reach this instance.
+      settled-ttl: ${INVITATION_GATE_SETTLED_TTL:PT30M}
+      # How long to wait before re-checking an invitee who is still mid-onboarding. Keep short:
+      # this is the delay between the invitee finishing their Keycloak actions and gaining access.
+      unsettled-ttl: ${INVITATION_GATE_UNSETTLED_TTL:PT30S}
+      max-size: ${INVITATION_GATE_MAX_SIZE:50000}
+
+# ============================================
 # Local-profile overrides
 # --------------------------------------------
 # Loads the demo fixtures. Kept in a profile-scoped document so demo-data.sql
@@ -134,6 +157,6 @@ spring:
     enabled: false
   sql:
     init:
-      mode: always
+      mode: never
       data-locations: classpath:db/data/demo-data.sql
 

@@ -5,10 +5,12 @@ spring:
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
     hikari:
-      # Connection pool settings for test environment
-      maximum-pool-size: ${DATABASE_POOL_SIZE:5}
-      minimum-idle: ${DATABASE_MIN_IDLE:1}
-      connection-timeout: 30000
+      # 5 was low enough that a handful of concurrent requests queued behind each other,
+      # and each one then waited up to the (previously 30s) connection timeout.
+      maximum-pool-size: ${DATABASE_POOL_SIZE:15}
+      minimum-idle: ${DATABASE_MIN_IDLE:5}
+      # Fail fast instead of making the caller wait 30s for a connection that is not coming.
+      connection-timeout: ${DATABASE_CONNECTION_TIMEOUT:3000}
       idle-timeout: 600000
       max-lifetime: 1800000
 
@@ -23,10 +25,15 @@ spring:
       # Overriding this to 'update' would let Hibernate silently diverge from the
       # migration history and is not supported.
       ddl-auto: validate
-    show-sql: ${JPA_SHOW_SQL:true}
+    # Must stay true: the communityFilter tenant isolation is bound to the request session.
+    # See application.yaml for the full rationale.
+    open-in-view: true
+    # SQL echoing is a per-statement synchronous write to stdout. On App Service that stdout
+    # is shipped off-box, so leaving it on taxes every single query.
+    show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${JPA_FORMAT_SQL:false}
         session_factory:
           statement_inspector: com.ria.olita.tech.silingan.config.CommunityStatementInspector
     defer-datasource-initialization: false
@@ -97,9 +104,11 @@ server:
 logging:
   level:
     root: ${LOG_LEVEL:INFO}
-    com.ria.olita.tech.silingan: DEBUG
-    com.ria.olita.tech.silingan.security: DEBUG
-    org.springframework.security: ${SECURITY_LOG_LEVEL:DEBUG}
+    # DEBUG here dumps every JWT claim and every authorization decision on every request.
+    # Overridable per environment when a problem actually needs tracing.
+    com.ria.olita.tech.silingan: ${APP_LOG_LEVEL:INFO}
+    com.ria.olita.tech.silingan.security: ${APP_SECURITY_LOG_LEVEL:INFO}
+    org.springframework.security: ${SECURITY_LOG_LEVEL:WARN}
 
 sms:
   provider: semaphore

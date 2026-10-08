@@ -15,7 +15,5 @@ public interface JwtService {
 	Optional<Jwt> parse(String token);
 
 	boolean validate(String token);
-
-	Optional<String> extractSubject(String token);
 }
 

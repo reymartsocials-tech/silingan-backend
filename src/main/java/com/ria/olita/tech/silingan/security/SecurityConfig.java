@@ -18,6 +18,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -82,6 +83,9 @@ public class SecurityConfig {
 	}
 
 	private void logJwtClaims(Jwt jwt, Logger log) {
+		if (!log.isDebugEnabled()) {
+			return;
+		}
 		log.debug("=== JWT Claims Debug ===");
 		jwt.getClaims()
 			.forEach((key, value) ->
@@ -165,18 +169,19 @@ public class SecurityConfig {
 	}
 
 	private void logGrantedAuthorities(Logger log, List<GrantedAuthority> authorities) {
-		log.info("JWT authentication successful - Total authorities granted: {}", authorities.size());
-
 		if (authorities.isEmpty()) {
 			log.warn("No authorities granted - check if user has roles assigned in Keycloak!");
 			return;
 		}
 
-		String granted = authorities.stream()
-			.map(GrantedAuthority::getAuthority)
-			.collect(Collectors.joining(", "));
-
-		log.info("Granted authorities: {}", granted);
+		// Per-request detail: DEBUG, not INFO. At INFO this produced two log lines on every
+		// single authenticated call.
+		if (log.isDebugEnabled()) {
+			String granted = authorities.stream()
+				.map(GrantedAuthority::getAuthority)
+				.collect(Collectors.joining(", "));
+			log.debug("JWT authentication successful - granted authorities ({}): {}", authorities.size(), granted);
+		}
 	}
 
 	@Bean
@@ -185,9 +190,11 @@ public class SecurityConfig {
 	                                       OtpVerificationFilter otpVerificationFilter,
 	                                       RestAuthenticationEntryPoint restAuthenticationEntryPoint,
 	                                       RestAccessDeniedHandler restAccessDeniedHandler,
-	                                       JwtDecoder jwtDecoder) throws Exception {
+	                                       JwtDecoder jwtDecoder,
+	                                       CorsConfigurationSource corsConfigurationSource) throws Exception {
 
 		http
+			.cors(cors -> cors.configurationSource(corsConfigurationSource))
 			.csrf(AbstractHttpConfigurer::disable)
 			// OAuth2 authorization-code login requires a server-side session for state handling.
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))

@@ -33,12 +33,13 @@ public class JwtServiceImpl implements JwtService {
 		Instant expiresAt = issuedAt.plusSeconds(jwtProperties.getAccessTokenTtlSeconds());
 
 		var builder = JwtClaimsSet.builder()
-			.subject(user.getKeycloakUserId())
+			.subject(user.getId().toString())
 			.issuer(jwtProperties.getIssuer())
 			.issuedAt(issuedAt)
 			.expiresAt(expiresAt)
 			.id(UUID.randomUUID().toString())
 			.claim("userId", user.getId().toString())
+			.claim("keycloakId", user.getKeycloakUserId())
 			.claim("mobileNumber", user.getMobileNumber())
 			.claim("firstName", user.getFirstName())
 			.claim("lastName", user.getLastName())
@@ -46,7 +47,7 @@ public class JwtServiceImpl implements JwtService {
 			.claim("roles", roles);
 		
 		if (communityId != null) {
-			builder.claim("communityId", communityId);
+			builder.claim("communityId", communityId.toString());
 		}
 		
 		JwtClaimsSet claimsSet = builder.build();
@@ -67,11 +68,6 @@ public class JwtServiceImpl implements JwtService {
 	@Override
 	public boolean validate(String token) {
 		return parse(token).isPresent();
-	}
-
-	@Override
-	public Optional<String> extractSubject(String token) {
-		return parse(token).map(Jwt::getSubject);
 	}
 
 }

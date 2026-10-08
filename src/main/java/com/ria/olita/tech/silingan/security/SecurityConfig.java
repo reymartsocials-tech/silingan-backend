@@ -18,6 +18,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -189,9 +190,11 @@ public class SecurityConfig {
 	                                       OtpVerificationFilter otpVerificationFilter,
 	                                       RestAuthenticationEntryPoint restAuthenticationEntryPoint,
 	                                       RestAccessDeniedHandler restAccessDeniedHandler,
-	                                       JwtDecoder jwtDecoder) throws Exception {
+	                                       JwtDecoder jwtDecoder,
+	                                       CorsConfigurationSource corsConfigurationSource) throws Exception {
 
 		http
+			.cors(cors -> cors.configurationSource(corsConfigurationSource))
 			.csrf(AbstractHttpConfigurer::disable)
 			// OAuth2 authorization-code login requires a server-side session for state handling.
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))

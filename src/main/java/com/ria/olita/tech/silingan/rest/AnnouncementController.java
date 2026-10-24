@@ -1,8 +1,11 @@
 package com.ria.olita.tech.silingan.rest;
 
+import com.ria.olita.tech.silingan.dto.req.AnnouncementFilterCriteria;
 import com.ria.olita.tech.silingan.dto.req.CreateAnnouncementRequest;
 import com.ria.olita.tech.silingan.dto.req.UpdateAnnouncementRequest;
 import com.ria.olita.tech.silingan.dto.res.AnnouncementResponse;
+import com.ria.olita.tech.silingan.entity.AnnouncementCategory;
+import com.ria.olita.tech.silingan.entity.AnnouncementStatus;
 import com.ria.olita.tech.silingan.entity.rbac.Action;
 import com.ria.olita.tech.silingan.entity.rbac.Domain;
 import com.ria.olita.tech.silingan.security.permission.RequiresPermission;
@@ -67,24 +70,30 @@ public class AnnouncementController {
 		return new ResponseEntity<>(response, HttpStatus.CREATED);
 	}
 
-	@GetMapping("/community/{communityId}")
-	@Operation(summary = "Get announcements by community")
+	@GetMapping
 	@RequiresPermission(domain = Domain.ANNOUNCEMENT, action = Action.VIEW)
-	public ResponseEntity<Page<AnnouncementResponse>> getCommunityAnnouncements(
-		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000") @PathVariable UUID communityId,
+	@Operation(summary = "Get announcements by community with advanced filtering and sorting")
+	public ResponseEntity<Page<AnnouncementResponse>> getAnnouncements(
+		@Parameter(description = "Community ID (required for non-admin users)", example = "550e8400-e29b-41d4-a716-446655440000") 
+		@RequestParam(required = false) UUID communityId,
+		@Parameter(description = "Filter by announcement status", example = "PUBLISHED")
+		@RequestParam(required = false) AnnouncementStatus status,
+		@Parameter(description = "Filter by announcement category", example = "NOTICE")
+		@RequestParam(required = false) AnnouncementCategory category,
+		@Parameter(description = "Filter by pinned status")
+		@RequestParam(required = false) Boolean pinned,
+		@Parameter(description = "Search keyword in title or content")
+		@RequestParam(required = false) String keyword,
 		Pageable pageable
 	) {
-		return ResponseEntity.ok(announcementService.getCommunityAnnouncements(communityId, pageable));
-	}
-
-	@GetMapping("/community/{communityId}/active")
-	@RequiresPermission(domain = Domain.ANNOUNCEMENT, action = Action.VIEW)
-	@Operation(summary = "Get active announcements by community")
-	public ResponseEntity<Page<AnnouncementResponse>> getActiveCommunityAnnouncements(
-		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000") @PathVariable UUID communityId,
-		Pageable pageable
-	) {
-		return ResponseEntity.ok(announcementService.getActiveCommunityAnnouncements(communityId, pageable));
+		AnnouncementFilterCriteria filterCriteria = AnnouncementFilterCriteria.builder()
+			.status(status)
+			.category(category)
+			.pinned(pinned)
+			.keyword(keyword)
+			.build();
+		
+		return ResponseEntity.ok(announcementService.getCommunityAnnouncementsWithFilters(communityId, filterCriteria, pageable));
 	}
 
 	@GetMapping("/{id}")
@@ -110,8 +119,7 @@ public class AnnouncementController {
 							{
 								"title": "Community General Assembly",
 								"content": "Please attend the general assembly this Saturday at 2PM.",
-								"category": "NOTICE",
-								"status": "PUBLISHED",
+								"category": "ADVISORY",
 								"pinned": false
 							}
 							"""

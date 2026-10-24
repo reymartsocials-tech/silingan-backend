@@ -9,7 +9,6 @@ public record StaffRoleAssignmentResponse(
 	UUID userId,
 	UUID communityId,
 	StaffRoleCode roleCode,
-	Boolean active,
 	LocalDateTime assignedAt,
 	UUID assignedBy
 ) {

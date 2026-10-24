@@ -1,6 +1,7 @@
 package com.ria.olita.tech.silingan.repository;
 
 import com.ria.olita.tech.silingan.entity.User;
+import com.ria.olita.tech.silingan.entity.UserStatus;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -27,13 +28,5 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	/** Duplicate-account check for mobile number; mirrors {@code uk_users_mobile_number_active}. */
 	boolean existsByMobileNumberAndDeletedFalse(String mobileNumber);
 
-
-	@Query("""
-	           SELECT u.id
-	           FROM User u
-	           WHERE u.keycloakUserId = ?1
-	       """)
-	Optional<String> getUserIdByKeycloakUserId(String keycloakUserId);
-
-	Optional<User> findByEmail(String email);
+	boolean existsByIdAndStatus(UUID id, UserStatus status);
 }

@@ -1,6 +1,9 @@
 package com.ria.olita.tech.silingan.entity;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import com.ria.olita.tech.silingan.entity.base.BaseEntity;
@@ -32,6 +35,7 @@ import org.hibernate.annotations.SQLRestriction;
   name = "communityFilter",
   condition = "community_id = :communityId"
 )
+@Getter
 @Setter
 public class Announcement extends BaseEntity {
 
@@ -73,5 +77,17 @@ public class Announcement extends BaseEntity {
     // Optional scheduled publishing
     @Column(name = "publish_at")
     private Instant publishAt;
+
+    // Set once when the announcement transitions from DRAFT to PUBLISHED
+    @Column(name = "published_at")
+    private LocalDateTime publishedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "published_by", columnDefinition = "UUID")
+    private User publishedBy;
+
+    @Transient
+    @Builder.Default
+    private List<AttachmentReference> attachmentReferences = new ArrayList<>();
 
 }

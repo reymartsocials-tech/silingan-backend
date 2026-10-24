@@ -28,12 +28,12 @@ public class OtpProperties {
     private Integer length = 6;
 
     /**
-     * OTP expiration time in minutes (default: 5 minutes).
+     * OTP expiration time in minutes (default: 30 minutes).
      */
     @NotNull
     @Min(1)
-    @Max(30)
-    private Integer expirationMinutes = 5;
+    @Max(60)
+    private Integer expirationMinutes = 30;
 
     /**
      * Maximum verification attempts allowed per OTP (default: 3).

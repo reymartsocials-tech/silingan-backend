@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository;
 import com.ria.olita.tech.silingan.entity.Invitation;
 import com.ria.olita.tech.silingan.entity.InvitationStatus;
 import com.ria.olita.tech.silingan.entity.InvitationType;
+import com.ria.olita.tech.silingan.entity.rbac.StaffRoleCode;
 
 @Repository
 public interface InvitationRepository extends JpaRepository<Invitation, UUID> {
@@ -222,5 +223,65 @@ public interface InvitationRepository extends JpaRepository<Invitation, UUID> {
 		@Param("pendingStatus") InvitationStatus pendingStatus,
 		@Param("expiredStatus") InvitationStatus expiredStatus,
 		@Param("now") LocalDateTime now
+	);
+
+	@Query("SELECT i FROM Invitation i " +
+		"WHERE i.communityId = :communityId " +
+		"AND i.type = :type " +
+		"AND LOWER(i.email) = LOWER(:email) " +
+		"ORDER BY i.invitedAt DESC " +
+		"LIMIT 1")
+	Optional<Invitation> findMostRecentByEmailAndCommunity(
+		@Param("communityId") UUID communityId,
+		@Param("type") InvitationType type,
+		@Param("email") String email
+	);
+
+	/**
+	 * Find most recent invitation regardless of status for idempotent handling.
+	 * Returns invitation matching community, type, email, and roleCode.
+	 */
+	@Query("SELECT i FROM Invitation i " +
+		"WHERE i.communityId = :communityId " +
+		"AND i.type = :type " +
+		"AND LOWER(i.email) = LOWER(:email) " +
+		"AND i.roleCode = :roleCode " +
+		"ORDER BY i.invitedAt DESC " +
+		"LIMIT 1")
+	Optional<Invitation> findMostRecentByEmailAndCommunityAndRole(
+		@Param("communityId") UUID communityId,
+		@Param("type") InvitationType type,
+		@Param("email") String email,
+		@Param("roleCode") StaffRoleCode roleCode
+	);
+
+	/**
+	 * Count pending and active invitations matching unique key (for concurrency check).
+	 */
+	@Query("SELECT COUNT(i) FROM Invitation i " +
+		"WHERE i.communityId = :communityId " +
+		"AND i.type = :type " +
+		"AND LOWER(i.email) = LOWER(:email) " +
+		"AND i.roleCode = :roleCode " +
+		"AND i.status IN ('PENDING', 'ACCEPTED')")
+	long countActiveByEmailAndRole(
+		@Param("communityId") UUID communityId,
+		@Param("type") InvitationType type,
+		@Param("email") String email,
+		@Param("roleCode") StaffRoleCode roleCode
+	);
+
+	/**
+	 * Find pending and revoked invitations for a community and email (for revoke checks).
+	 */
+	@Query("SELECT i FROM Invitation i " +
+		"WHERE i.communityId = :communityId " +
+		"AND LOWER(i.email) = LOWER(:email) " +
+		"AND i.status IN :statuses " +
+		"ORDER BY i.invitedAt DESC")
+	List<Invitation> findByEmailAndCommunityAndStatuses(
+		@Param("communityId") UUID communityId,
+		@Param("email") String email,
+		@Param("statuses") List<InvitationStatus> statuses
 	);
 }

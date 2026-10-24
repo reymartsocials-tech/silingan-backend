@@ -1,14 +1,13 @@
 package com.ria.olita.tech.silingan.service.impl;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Map;
-import java.util.HashMap;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,10 +25,11 @@ import com.ria.olita.tech.silingan.dto.res.PermissionMatrixResponse.MatrixRow;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleAssignmentResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleResponse;
 import com.ria.olita.tech.silingan.entity.Community;
+import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.entity.User;
 import com.ria.olita.tech.silingan.entity.UserCommunity;
-import com.ria.olita.tech.silingan.entity.UserCommunityStaffRole;
+import com.ria.olita.tech.silingan.entity.UserStatus;
 import com.ria.olita.tech.silingan.entity.rbac.AccessLevel;
 import com.ria.olita.tech.silingan.entity.rbac.Domain;
 import com.ria.olita.tech.silingan.entity.rbac.PermissionEnum;
@@ -39,7 +39,6 @@ import com.ria.olita.tech.silingan.exception.ForbiddenException;
 import com.ria.olita.tech.silingan.exception.NotFoundException;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
-import com.ria.olita.tech.silingan.repository.UserCommunityStaffRoleRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
 import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
@@ -57,8 +56,8 @@ import lombok.RequiredArgsConstructor;
  * per-community overrides, and no per-user grants — the catalogue is read-only, so what the
  * permission matrix shows is always what is enforced.
  *
- * <p>Only an <em>active</em> assignment contributes, which makes deactivating an assignment an
- * effective suspension without deleting the record.
+ * <p>A staff role assignment is represented by populating the roleCode field in UserCommunity.
+ * When roleCode is NULL, the user has no staff role in that community.
  *
  * <p><b>Callers.</b> {@code StaffRoleCatalogController} and {@code StaffRoleAssignmentController}
  * for administration, and {@code UserContextFilter} which calls
@@ -68,17 +67,13 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class CommunityRbacServiceImpl implements CommunityRbacService {
 
-	private final UserCommunityStaffRoleRepository userCommunityStaffRoleRepository;
 	private final UserCommunityRepository userCommunityRepository;
 	private final UserRepository userRepository;
 	private final CommunityRepository communityRepository;
 	private final StaffGrantGuard staffGrantGuard;
 
-	/**
-	 * Returns every permission the platform understands, split into its {@code domain} and
-	 * {@code action} parts with a human-readable label.
-	 */
 	@Override
+	@Transactional(readOnly = true)
 	public AvailablePermissionsResponse getPermissionCatalog() {
 		List<PermissionInfo> permissions = Arrays.stream(PermissionEnum.values())
 			.map(permission -> new PermissionInfo(
@@ -91,13 +86,6 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 		return new AvailablePermissionsResponse(permissions);
 	}
 
-	/**
-	 * Returns the predefined roles with their name, description, and granted permissions.
-	 *
-	 * <p>Usage: {@code GET /api/v1/communities/{communityId}/roles}.
-	 *
-	 * @throws NotFoundException if the community does not exist.
-	 */
 	@Override
 	@Transactional(readOnly = true)
 	public List<StaffRoleResponse> getRoleCatalog(UUID communityId) {
@@ -114,14 +102,6 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 			.toList();
 	}
 
-	/**
-	 * Returns the permission matrix: roles as columns, modules as rows, each cell carrying
-	 * View + Manage, View Only, or No Access.
-	 *
-	 * <p>Usage: {@code GET /api/v1/communities/{communityId}/roles/permissions}.
-	 *
-	 * @throws NotFoundException if the community does not exist.
-	 */
 	@Override
 	@Transactional(readOnly = true)
 	public PermissionMatrixResponse getPermissionMatrix(UUID communityId) {
@@ -142,21 +122,6 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 		return new PermissionMatrixResponse(roles, modules);
 	}
 
-	/**
-	 * Assigns or replaces a member's staff role within a community.
-	 *
-	 * <p>A user holds at most one staff role per community, so this upserts rather than appends.
-	 *
-	 * <p>Guards applied, in order: the caller may not target themselves; the target must already be a
-	 * member of the community; only {@code STAFF} and {@code COMMUNITY_ADMIN} members are eligible;
-	 * and the caller may not assign a role carrying permissions they do not themselves hold.
-	 *
-	 * <p>Usage: {@code PUT /api/v1/communities/{communityId}/staff/{userId}/role}.
-	 *
-	 * @throws NotFoundException  if the community, user, or membership does not exist.
-	 * @throws ForbiddenException if the member is ineligible, or the caller is escalating privileges
-	 *                            or modifying their own account.
-	 */
 	@Override
 	@Transactional
 	public StaffRoleAssignmentResponse assignStaffRole(UUID communityId, UUID userId, AssignStaffRoleRequest request) {
@@ -174,9 +139,8 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 			throw new ForbiddenException("Staff role can only be assigned to STAFF or COMMUNITY_ADMIN members");
 		}
 
-		if (membership.getRole() == SilinganRealmRole.COMMUNITY_ADMIN
-			&& (request.roleCode() != StaffRoleCode.COMMUNITY_ADMIN || !request.active())) {
-			throw new ForbiddenException("The final active Community Admin cannot be deactivated or assigned a lower role");
+		if (membership.getRole() == SilinganRealmRole.COMMUNITY_ADMIN && request.roleCode() != StaffRoleCode.COMMUNITY_ADMIN) {
+			throw new ForbiddenException("The final Community Admin cannot be assigned a lower role");
 		}
 
 		staffGrantGuard.assertCanAssignRole(
@@ -186,45 +150,24 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 			() -> resolveEffectivePermissions(staffGrantGuard.requireCurrentUserId(), communityId)
 		);
 
-		UserCommunityStaffRole assignment = userCommunityStaffRoleRepository
-			.findByUserIdAndCommunityId(userId, communityId)
-			.orElseGet(() -> UserCommunityStaffRole.builder()
-				.user(user)
-				.community(community)
-				.build());
+		membership.setRoleCode(request.roleCode());
+		membership.setAssignedAt(LocalDateTime.now(ZoneOffset.UTC));
+		membership.setAssignedBy(resolveCurrentUserEntity().orElse(null));
 
-		assignment.setRoleCode(request.roleCode());
-		assignment.setActive(request.active());
-		assignment.setAssignedAt(LocalDateTime.now());
-		assignment.setAssignedBy(resolveCurrentUserEntity().orElse(null));
-
-		return toAssignmentResponse(userCommunityStaffRoleRepository.save(assignment));
+		return toAssignmentResponse(userCommunityRepository.save(membership));
 	}
 
-	/**
-	 * Reads a member's staff role assignment, including inactive ones.
-	 *
-	 * <p>Returns an empty assignment rather than throwing when the user has none, so the admin UI can
-	 * render "no role assigned" without special-casing a 404.
-	 *
-	 * <p>Usage: {@code GET /api/v1/communities/{communityId}/staff/{userId}/role}.
-	 */
 	@Override
 	@Transactional(readOnly = true)
 	public StaffRoleAssignmentResponse getStaffRoleAssignment(UUID communityId, UUID userId) {
 		ensureCommunityExists(communityId);
 		ensureUserExists(userId);
 
-		return userCommunityStaffRoleRepository.findByUserIdAndCommunityId(userId, communityId)
+		return userCommunityRepository.findByUserIdAndCommunityIdWithStaffRole(userId, communityId)
 			.map(this::toAssignmentResponse)
-			.orElse(new StaffRoleAssignmentResponse(userId, communityId, null, false, null, null));
+			.orElse(new StaffRoleAssignmentResponse(userId, communityId, null, null, null));
 	}
 
-	/**
-	 * Returns a member's assigned role and the permissions that role grants.
-	 *
-	 * <p>Usage: {@code GET /api/v1/communities/{communityId}/staff/{userId}/effective-permissions}.
-	 */
 	@Override
 	@Transactional(readOnly = true)
 	public EffectivePermissionsResponse getEffectivePermissions(UUID communityId, UUID userId) {
@@ -241,92 +184,48 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 		);
 	}
 
-	/**
-	 * Returns the authenticated caller's own role and permissions for a community, so the frontend
-	 * can decide what to render. Not an authorization decision — that is always re-made server-side
-	 * by {@code PermissionAspect}.
-	 *
-	 * <p>Usage: {@code GET /api/v1/communities/{communityId}/me/permissions}.
-	 */
 	@Override
 	@Transactional(readOnly = true)
 	public CurrentUserCapabilitiesResponse getCurrentUserCapabilities(UUID communityId) {
 		ensureCommunityExists(communityId);
+		
+		UUID userId = staffGrantGuard.requireCurrentUserId();
+		UserCommunity membership = userCommunityRepository.findByUserIdAndCommunityIdAndUserStatusActive(userId, communityId)
+			.orElse(null);
 
-		UserContext userContext = UserContextHolder.get();
-		if (userContext == null || userContext.userId() == null) {
-			throw new ForbiddenException("No authenticated user context");
+		if (membership == null) {
+			return new CurrentUserCapabilitiesResponse(userId, communityId, null, Set.of());
 		}
 
-		UUID userId;
-		try {
-			userId = UUID.fromString(userContext.userId());
-		} catch (IllegalArgumentException ex) {
-			throw new ForbiddenException("Invalid authenticated user context");
-		}
-
-		if (UserContextHolder.isPlatformAdmin() || UserContextHolder.isCommunityAdmin()) {
-			return new CurrentUserCapabilitiesResponse(
-				userId,
-				communityId,
-				StaffRoleCode.COMMUNITY_ADMIN,
-				StaffRoleCatalog.permissions(StaffRoleCode.COMMUNITY_ADMIN)
-			);
-		}
-
+		StaffRoleCode roleCode = resolveCommunityRoleCode(membership, membership.getRoleCode());
 		return new CurrentUserCapabilitiesResponse(
 			userId,
 			communityId,
-			resolveAssignedRole(userId, communityId).orElse(null),
-			resolveEffectivePermissions(userId, communityId)
+			roleCode,
+			roleCode == null ? Set.of() : StaffRoleCatalog.permissions(roleCode)
 		);
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public List<CurrentUserCommunityPermissionsResponse> getCurrentUserCommunities() {
-		UserContext userContext = UserContextHolder.get();
-		if (userContext == null || userContext.userId() == null) {
-			throw new ForbiddenException("No authenticated user context");
-		}
-
-		UUID userId;
-		try {
-			userId = UUID.fromString(userContext.userId());
-		} catch (IllegalArgumentException ex) {
-			throw new ForbiddenException("Invalid authenticated user context");
-		}
-
-		UUID selectedCommunityId = null;
-		if (userContext.communityId() != null && !userContext.communityId().isBlank()) {
-			try {
-				selectedCommunityId = UUID.fromString(userContext.communityId());
-			} catch (IllegalArgumentException ignored) {
-				selectedCommunityId = null;
-			}
-		}
+		UUID userId = staffGrantGuard.requireCurrentUserId();
+		UUID selectedCommunityId = Optional.ofNullable(UserContextHolder.get())
+			.map(UserContext::communityId)
+			.map(UUID::fromString)
+			.orElse(null);
 
 		List<UserCommunity> memberships = userCommunityRepository.findActiveByUserIdWithCommunity(userId);
-		List<UUID> communityIds = memberships.stream()
-			.map(membership -> membership.getCommunity().getId())
-			.toList();
 
-		Map<UUID, StaffRoleCode> assignedRoleByCommunityId = new HashMap<>();
-		for (UserCommunityStaffRole assignment : userCommunityStaffRoleRepository
-			.findByUserIdAndCommunityIdInAndActiveTrue(userId, communityIds)) {
-			assignedRoleByCommunityId.put(assignment.getCommunityId(), assignment.getRoleCode());
-		}
-
-		UUID finalSelectedCommunityId = selectedCommunityId;
 		return memberships.stream()
 			.map(membership -> {
 				UUID communityId = membership.getCommunity().getId();
-				StaffRoleCode roleCode = resolveCommunityRoleCode(membership, assignedRoleByCommunityId.get(communityId));
+				StaffRoleCode roleCode = resolveCommunityRoleCode(membership, membership.getRoleCode());
 				return new CurrentUserCommunityPermissionsResponse(
 					communityId,
 					membership.getCommunity().getCommunityCode(),
 					membership.getCommunity().getName(),
-					communityId.equals(finalSelectedCommunityId),
+					communityId.equals(selectedCommunityId),
 					roleCode,
 					roleCode == null ? Set.of() : StaffRoleCatalog.permissions(roleCode)
 				);
@@ -334,14 +233,6 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 			.toList();
 	}
 
-	/**
-	 * Resolves the flat set of permissions a user holds in a community.
-	 *
-	 * <p><b>Hot path.</b> {@code UserContextFilter} calls this once per authenticated request, so it
-	 * is deliberately lean — a single lookup plus a static map read.
-	 *
-	 * @return the role's permission set, or empty when no active role is assigned.
-	 */
 	@Override
 	@Transactional(readOnly = true)
 	public Set<PermissionEnum> resolveEffectivePermissions(UUID userId, UUID communityId) {
@@ -354,15 +245,11 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 			.orElseGet(() -> EnumSet.noneOf(PermissionEnum.class));
 	}
 
-	/**
-	 * Returns the code of the user's <em>active</em> staff role in a community, if any. Inactive
-	 * assignments are ignored, because a suspended role is not the user's current one.
-	 */
 	@Override
 	@Transactional(readOnly = true)
 	public Optional<StaffRoleCode> resolveAssignedRole(UUID userId, UUID communityId) {
-		return userCommunityStaffRoleRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId)
-			.map(UserCommunityStaffRole::getRoleCode);
+		return userCommunityRepository.findByUserIdAndCommunityIdWithStaffRole(userId, communityId)
+			.map(UserCommunity::getRoleCode);
 	}
 
 	private MatrixRow buildMatrixRow(Domain module) {
@@ -376,53 +263,40 @@ public class CommunityRbacServiceImpl implements CommunityRbacService {
 		return new MatrixRow(module.getValue(), module.getLabel(), cells);
 	}
 
-	/**
-	 * Maps a persisted assignment to its API response, reading identifiers from the shadow columns
-	 * where available so no lazy association has to be initialised.
-	 */
-	private StaffRoleAssignmentResponse toAssignmentResponse(UserCommunityStaffRole assignment) {
-		UUID userId = assignment.getUserId() != null
-			? assignment.getUserId()
-			: (assignment.getUser() != null ? assignment.getUser().getId() : null);
-		UUID communityId = assignment.getCommunityId() != null
-			? assignment.getCommunityId()
-			: (assignment.getCommunity() != null ? assignment.getCommunity().getId() : null);
+	private StaffRoleAssignmentResponse toAssignmentResponse(UserCommunity membership) {
+		UUID userId = membership.getUserId() != null
+			? membership.getUserId()
+			: (membership.getUser() != null ? membership.getUser().getId() : null);
+		UUID communityId = membership.getCommunityId() != null
+			? membership.getCommunityId()
+			: (membership.getCommunity() != null ? membership.getCommunity().getId() : null);
 
 		return new StaffRoleAssignmentResponse(
 			userId,
 			communityId,
-			assignment.getRoleCode(),
-			assignment.getActive(),
-			assignment.getAssignedAt(),
-			assignment.getAssignedBy() != null ? assignment.getAssignedBy().getId() : null
+			membership.getRoleCode(),
+			membership.getAssignedAt(),
+			membership.getAssignedBy() != null ? membership.getAssignedBy().getId() : null
 		);
 	}
 
-	/**
-	 * Derives a display label such as "Manage Announcements" from a permission's module and action.
-	 */
 	private String buildPermissionDescription(PermissionEnum permission) {
 		String action = permission.getAction().canManage() ? "Manage" : "View";
 		return action + " " + permission.getDomain().getLabel();
 	}
 
 	private void ensureCommunityExists(UUID communityId) {
-		if (!communityRepository.existsById(communityId)) {
+		if (!communityRepository.existsByIdAndStatus(communityId, CommunityStatus.ACTIVE)) {
 			throw new NotFoundException("Community not found");
 		}
 	}
 
 	private void ensureUserExists(UUID userId) {
-		if (!userRepository.existsById(userId)) {
+		if (!userRepository.existsByIdAndStatus(userId, UserStatus.ACTIVE)) {
 			throw new NotFoundException("User not found");
 		}
 	}
 
-	/**
-	 * Loads the authenticated caller's {@link User} entity for audit stamping. Returns empty rather
-	 * than throwing, because it only populates {@code assignedBy} — the authorization decision was
-	 * already made by {@link StaffGrantGuard}.
-	 */
 	private Optional<User> resolveCurrentUserEntity() {
 		UserContext context = UserContextHolder.get();
 		if (context == null || context.userId() == null) {

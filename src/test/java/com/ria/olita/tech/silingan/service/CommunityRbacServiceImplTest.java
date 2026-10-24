@@ -16,10 +16,10 @@ import com.ria.olita.tech.silingan.dto.res.CurrentUserCommunityPermissionsRespon
 import com.ria.olita.tech.silingan.dto.res.PermissionMatrixResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleResponse;
 import com.ria.olita.tech.silingan.entity.Community;
+import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.entity.User;
 import com.ria.olita.tech.silingan.entity.UserCommunity;
-import com.ria.olita.tech.silingan.entity.UserCommunityStaffRole;
 import com.ria.olita.tech.silingan.entity.rbac.AccessLevel;
 import com.ria.olita.tech.silingan.entity.rbac.Domain;
 import com.ria.olita.tech.silingan.entity.rbac.PermissionEnum;
@@ -28,7 +28,6 @@ import com.ria.olita.tech.silingan.exception.ForbiddenException;
 import com.ria.olita.tech.silingan.exception.NotFoundException;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
-import com.ria.olita.tech.silingan.repository.UserCommunityStaffRoleRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
 import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
@@ -38,14 +37,11 @@ import com.ria.olita.tech.silingan.service.impl.CommunityRbacServiceImpl;
 
 class CommunityRbacServiceImplTest {
 
-	private final UserCommunityStaffRoleRepository staffRoleAssignmentRepository =
-		Mockito.mock(UserCommunityStaffRoleRepository.class);
 	private final UserCommunityRepository userCommunityRepository = Mockito.mock(UserCommunityRepository.class);
 	private final UserRepository userRepository = Mockito.mock(UserRepository.class);
 	private final CommunityRepository communityRepository = Mockito.mock(CommunityRepository.class);
 
 	private final CommunityRbacServiceImpl service = new CommunityRbacServiceImpl(
-		staffRoleAssignmentRepository,
 		userCommunityRepository,
 		userRepository,
 		communityRepository,
@@ -60,7 +56,7 @@ class CommunityRbacServiceImplTest {
 	@Test
 	void roleCatalogReturnsTheFivePredefinedRolesWithCommunityAdminAsHighestAccess() {
 		UUID communityId = UUID.randomUUID();
-		Mockito.when(communityRepository.existsById(communityId))
+		Mockito.when(communityRepository.existsByIdAndStatus(communityId, CommunityStatus.ACTIVE))
 			.thenReturn(true);
 
 		List<StaffRoleResponse> roles = service.getRoleCatalog(communityId);
@@ -96,7 +92,7 @@ class CommunityRbacServiceImplTest {
 	@Test
 	void permissionMatrixExposesRolesAsColumnsAndModulesAsRows() {
 		UUID communityId = UUID.randomUUID();
-		Mockito.when(communityRepository.existsById(communityId))
+		Mockito.when(communityRepository.existsByIdAndStatus(communityId, CommunityStatus.ACTIVE))
 			.thenReturn(true);
 
 		PermissionMatrixResponse matrix = service.getPermissionMatrix(communityId);
@@ -117,8 +113,8 @@ class CommunityRbacServiceImplTest {
 	void effectivePermissionsComeFromTheAssignedPredefinedRoleOnly() {
 		UUID communityId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
-		Mockito.when(staffRoleAssignmentRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId))
-			.thenReturn(Optional.of(UserCommunityStaffRole.builder()
+		Mockito.when(userCommunityRepository.findByUserIdAndCommunityIdWithStaffRole(userId, communityId))
+			.thenReturn(Optional.of(UserCommunity.builder()
 				.roleCode(StaffRoleCode.PMO_STAFF)
 				.build()));
 
@@ -140,7 +136,7 @@ class CommunityRbacServiceImplTest {
 	void userWithoutAnActiveRoleHasNoPermissions() {
 		UUID communityId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
-		Mockito.when(staffRoleAssignmentRepository.findByUserIdAndCommunityIdAndActiveTrue(userId, communityId))
+		Mockito.when(userCommunityRepository.findByUserIdAndCommunityIdWithStaffRole(userId, communityId))
 			.thenReturn(Optional.empty());
 
 		assertThat(service.resolveEffectivePermissions(userId, communityId)).isEmpty();
@@ -176,7 +172,7 @@ class CommunityRbacServiceImplTest {
 			new AssignStaffRoleRequest(StaffRoleCode.PMO_STAFF, true)
 		))
 			.isInstanceOf(ForbiddenException.class)
-			.hasMessageContaining("final active Community Admin");
+			.hasMessageContaining("final Community Admin");
 	}
 
 	@Test
@@ -206,20 +202,16 @@ class CommunityRbacServiceImplTest {
 			.thenReturn(List.of(
 				UserCommunity.builder()
 					.community(selectedCommunity)
+					.communityId(selectedCommunityId)
 					.role(SilinganRealmRole.STAFF)
+					.roleCode(StaffRoleCode.PMO_STAFF)
 					.build(),
 				UserCommunity.builder()
 					.community(otherCommunity)
+					.communityId(otherCommunityId)
 					.role(SilinganRealmRole.COMMUNITY_ADMIN)
+					.roleCode(StaffRoleCode.COMMUNITY_ADMIN)
 					.build()));
-		Mockito.when(staffRoleAssignmentRepository.findByUserIdAndCommunityIdInAndActiveTrue(userId, List.of(selectedCommunityId, otherCommunityId)))
-			.thenReturn(List.of(
-				UserCommunityStaffRole.builder()
-					.communityId(selectedCommunityId)
-					.roleCode(StaffRoleCode.PMO_STAFF)
-					.active(true)
-					.build()
-			));
 
 		List<CurrentUserCommunityPermissionsResponse> responses = service.getCurrentUserCommunities();
 

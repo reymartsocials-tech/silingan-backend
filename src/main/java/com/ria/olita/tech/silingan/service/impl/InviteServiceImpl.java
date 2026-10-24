@@ -7,6 +7,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -92,20 +93,72 @@ public class InviteServiceImpl implements InviteService {
 			}
 		}
 		
-		// Validate request (admin or staff) and run existing checks
+		// Load community first (kept because community name is needed)
+		Community community = communityRepository.findByIdAndStatus(communityId, CommunityStatus.ACTIVE)
+			.orElseThrow(() -> new NotFoundException("Community not found"));
+		
+		InvitationType invitationType = isAdmin ? InvitationType.ADMIN : InvitationType.STAFF;
+		
+		// IDEMPOTENCY: Check for existing invitation with same unique key (communityId, email, roleCode)
+		Optional<Invitation> mostRecent = invitationRepository.findMostRecentByEmailAndCommunityAndRole(
+			communityId, invitationType, normalizedEmail, parsedRoleCode
+		);
+		
+		// Track if we're reusing existing keycloakUserId (for idempotent resend)
+		String existingKeycloakUserId = null;
+		
+		if (mostRecent.isPresent()) {
+			Invitation existing = mostRecent.get();
+			
+			// Case 1: Existing PENDING invitation → Expire it and create new one (resend)
+			if (existing.getStatus() == InvitationStatus.PENDING && existing.isActive(now)) {
+				log.info("Idempotent invite: Existing PENDING invitation found. Expiring id={} and creating new invitation", 
+					existing.getId());
+				existing.setStatus(InvitationStatus.EXPIRED);
+				existing.setExpiresAt(now); // Mark as expired immediately
+				invitationRepository.save(existing);
+				// REUSE keycloakUserId from prior invitation to avoid duplicates
+				existingKeycloakUserId = existing.getKeycloakUserId();
+				log.info("Reusing keycloakUserId from prior invitation: {}", existingKeycloakUserId);
+				// Fall through to create new invitation with same keycloakUserId
+			}
+			// Case 2: Existing ACCEPTED invitation → Conflict
+			else if (existing.getStatus() == InvitationStatus.ACCEPTED) {
+				log.warn("Invite rejected: User already accepted invitation for email={}, community={}", 
+					normalizedEmail, communityId);
+				throw new ConflictException(
+					"User is already an active member of this community (invitation accepted)"
+				);
+			}
+			// Case 3: Existing EXPIRED invitation → Create new one
+			else if (existing.getStatus() == InvitationStatus.EXPIRED) {
+				log.info("Idempotent invite: Existing EXPIRED invitation found id={}. Creating new invitation", 
+					existing.getId());
+				// REUSE keycloakUserId from expired invitation to avoid duplicates
+				existingKeycloakUserId = existing.getKeycloakUserId();
+				if (existingKeycloakUserId != null && !existingKeycloakUserId.isBlank()) {
+					log.info("Reusing keycloakUserId from expired invitation: {}", existingKeycloakUserId);
+				}
+				// Fall through to create new invitation
+			}
+			// Case 4: Existing REVOKED invitation → Reject (should not re-invite)
+			else if (existing.getStatus() == InvitationStatus.REVOKED) {
+				log.warn("Invite rejected: Previous invitation was revoked for email={}, community={}", 
+					normalizedEmail, communityId);
+				throw new ConflictException(
+					"Previous invitation for this email was revoked. Contact administrator to create a new one."
+				);
+			}
+		}
+		
+		// Additional validations for new invitation creation
 		if (isAdmin) {
 			validateAdminInvitation(communityId, now);
 		} else {
 			validateStaffInvitation(communityId, normalizedEmail, now);
 		}
 		
-		// Load community (kept because community name is needed)
-		Community community = communityRepository.findByIdAndStatus(communityId, CommunityStatus.ACTIVE)
-			.orElseThrow(() -> new NotFoundException("Community not found"));
-		
-		InvitationType invitationType = isAdmin ? InvitationType.ADMIN : InvitationType.STAFF;
-		
-		// Build invitation
+		// Build new invitation
 		String inviterId = UserContextHolder.get() != null ? UserContextHolder.get().userId() : null;
 		
 		Invitation invitation = Invitation.builder()
@@ -113,59 +166,74 @@ public class InviteServiceImpl implements InviteService {
 			.community(community)
 			.communityId(communityId)
 			.email(normalizedEmail)
-			.keycloakUserId(null) // Will be set after Keycloak creation
+			.keycloakUserId(existingKeycloakUserId) // Will be set after Keycloak creation if new
 			.status(InvitationStatus.PENDING)
 			.invitedAt(now)
 			.expiresAt(now.plusDays(invitationExpiryDays))
 			.notes(request.notes())
+			.roleCode(parsedRoleCode)
 			.invitedBy(inviterId != null ? userRepository.getReferenceById(UUID.fromString(inviterId)) : null)
 			.build();
-		
-		// Set roleCode for STAFF invitations
-		if (!isAdmin) {
-			invitation.setRoleCode(parsedRoleCode);
-		}
-		
+
 		invitation = invitationRepository.save(invitation);
 		
-		// Create Keycloak user synchronously before sending email
+		// Only create Keycloak user if we don't have one from prior invitation
 		String realmRole = isAdmin ? SilinganRealmRole.COMMUNITY_ADMIN.name() : SilinganRealmRole.STAFF.name();
-		String keycloakUserId = keycloakService.createInvitationUserWithRoles(
-			normalizedEmail,
-			List.of(realmRole)
-		);
-		
-		// Update user attributes
-		keycloakService.updateUserAttributes(
-			keycloakUserId,
-			Map.of(
-				"communityId", List.of(communityId.toString()),
-				"communityName", List.of(community.getName())
-			)
-		);
-		
-		// Update invitation with keycloakUserId
-		invitation.setKeycloakUserId(keycloakUserId);
-		invitation = invitationRepository.save(invitation);
-		log.info("Keycloak user created and invitation updated: id={}, keycloakUserId={}, email={}",
-			invitation.getId(), keycloakUserId, normalizedEmail);
-		
-		// Create pending user and community membership
-		pendingUserCreator.createPendingUserAndMembership(invitation, keycloakUserId);
-		
-		// Publish event for async email sending (now with valid keycloakUserId)
-		eventPublisher.publishEvent(new InvitationCreatedEvent(
-			this,
-			invitation.getId(),
-			keycloakUserId,
-			REQUIRED_ACTIONS,
-			invitationType,
-			normalizedEmail,
-			communityId
-		));
-		
-		log.info("Invitation created - type: {}, community: {}, email: {}, keycloakUserId: {}",
-			invitationType, communityId, normalizedEmail, keycloakUserId);
+		if (existingKeycloakUserId == null || existingKeycloakUserId.isBlank()) {
+			log.info("Creating new Keycloak user for email={}", normalizedEmail);
+			String keycloakUserId = keycloakService.createInvitationUserWithRoles(
+				normalizedEmail,
+				List.of(realmRole)
+			);
+			
+			// Update user attributes
+			keycloakService.updateUserAttributes(
+				keycloakUserId,
+				Map.of(
+					"communityId", List.of(communityId.toString()),
+					"communityName", List.of(community.getName())
+				)
+			);
+			
+			// Update invitation with keycloakUserId
+			invitation.setKeycloakUserId(keycloakUserId);
+			invitation = invitationRepository.save(invitation);
+			log.info("Keycloak user created and invitation updated: id={}, keycloakUserId={}, email={}",
+				invitation.getId(), keycloakUserId, normalizedEmail);
+			
+			// Create pending user and community membership (has guards against duplicates)
+			pendingUserCreator.createPendingUserAndMembership(invitation, keycloakUserId);
+			
+			// Publish event for async email sending
+			eventPublisher.publishEvent(new InvitationCreatedEvent(
+				this,
+				invitation.getId(),
+				keycloakUserId,
+				REQUIRED_ACTIONS,
+				invitationType,
+				normalizedEmail,
+				communityId
+			));
+			
+			log.info("Invitation created - type: {}, community: {}, email: {}, keycloakUserId: {}",
+				invitationType, communityId, normalizedEmail, keycloakUserId);
+		} else {
+			log.info("Reusing existing Keycloak user for idempotent reinvite: keycloakUserId={}", existingKeycloakUserId);
+			
+			// Publish event for async email sending with REUSED keycloakUserId
+			eventPublisher.publishEvent(new InvitationCreatedEvent(
+				this,
+				invitation.getId(),
+				existingKeycloakUserId,
+				REQUIRED_ACTIONS,
+				invitationType,
+				normalizedEmail,
+				communityId
+			));
+			
+			log.info("Invitation resent (idempotent) - type: {}, community: {}, email: {}, reusingKeycloakUserId: {}",
+				invitationType, communityId, normalizedEmail, existingKeycloakUserId);
+		}
 		
 		return invitationMapper.toSummaryResponse(invitation);
 	}
@@ -249,12 +317,37 @@ public class InviteServiceImpl implements InviteService {
 			throw new IllegalStateException("Only pending invitations can be revoked");
 		}
 
+		LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
 		invitation.setStatus(InvitationStatus.REVOKED);
-		invitation.setRevokedAt(LocalDateTime.now(ZoneOffset.UTC));
-		invitation.setNotes(reason);
+		invitation.setRevokedAt(now);
+		
+		// Preserve any existing notes if reason not provided, otherwise use reason
+		if (reason != null && !reason.isBlank()) {
+			invitation.setNotes(reason);
+		}
 
 		invitation = invitationRepository.save(invitation);
 		log.info("Invitation revoked: id={}, community={}, type={}", invitationId, communityId, invitation.getType());
+
+		// Deactivate associated user and membership (if they exist)
+		if (invitation.getKeycloakUserId() != null && !invitation.getKeycloakUserId().isBlank()) {
+			var user = userRepository.findByKeycloakUserId(invitation.getKeycloakUserId());
+			
+			if (user.isPresent()) {
+				User u = user.get();
+				
+				// Mark user as INACTIVE
+				u.setStatus(com.ria.olita.tech.silingan.entity.UserStatus.INACTIVE);
+				userRepository.save(u);
+				log.info("User deactivated on revoke: userId={}, email={}", u.getId(), u.getEmail());
+				
+				// Deactivate staff role assignment in UserCommunity
+				int updated = userCommunityRepository.deactivateStaffRoleAssignment(u.getId(), communityId, now);
+				if (updated > 0) {
+					log.info("Staff role deactivated on revoke: userId={}, communityId={}", u.getId(), communityId);
+				}
+			}
+		}
 
 		return invitationMapper.toSummaryResponse(invitation);
 	}
@@ -288,6 +381,12 @@ public class InviteServiceImpl implements InviteService {
 	}
 
 	private void activateAdminInvitation(Invitation invitation, String keycloakUserId, LocalDateTime now) {
+		// Check if invitation is revoked - prevent activation
+		if (invitation.getStatus() == InvitationStatus.REVOKED) {
+			log.warn("Admin invitation {} is REVOKED; refusing activation", invitation.getId());
+			return;
+		}
+		
 		if (invitation.isExpired(now)) {
 			invitation.setStatus(InvitationStatus.EXPIRED);
 			invitationRepository.save(invitation);
@@ -329,6 +428,12 @@ public class InviteServiceImpl implements InviteService {
 	}
 
 	private void activateStaffInvitation(Invitation invitation, String keycloakUserId, LocalDateTime now) {
+		// Check if invitation is revoked - prevent activation
+		if (invitation.getStatus() == InvitationStatus.REVOKED) {
+			log.warn("Staff invitation {} is REVOKED; refusing activation", invitation.getId());
+			return;
+		}
+		
 		if (invitation.isExpired(now)) {
 			invitation.setStatus(InvitationStatus.EXPIRED);
 			invitationRepository.save(invitation);

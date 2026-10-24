@@ -21,6 +21,8 @@ public interface CommunityRepository extends JpaRepository<Community, UUID> {
 	@Query("Select c from Community c where c.id = ?1 AND c.status = ?2")
 	Optional<Community> findByIdAndStatus(UUID id, CommunityStatus status);
 
+	boolean existsByIdAndStatus(UUID id, CommunityStatus status);
+
 	@Query("select CASE WHEN COUNT(c) > 0 THEN TRUE ELSE FALSE END FROM Community c WHERE c.communityCode = ?1 AND c.status = ?2")
 	boolean existsByCodeAndStatus(String code, CommunityStatus status);
 

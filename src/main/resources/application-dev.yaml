@@ -120,7 +120,7 @@ sms:
 
 otp:
   length: ${OTP_LENGTH:6}
-  expiration-minutes: ${OTP_EXPIRATION_MINUTES:5}
+  expiration-minutes: ${OTP_EXPIRATION_MINUTES:30}
   max-attempts: ${OTP_MAX_ATTEMPTS:3}
   cooldown-seconds: ${OTP_COOLDOWN_SECONDS:60}
   registration-proof-minutes: ${OTP_REGISTRATION_PROOF_MINUTES:10}

@@ -70,6 +70,13 @@ public class Community extends BaseEntity {
 	@JoinColumn(name = "logo_id")
 	private Media logo;
 
+	@OneToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "logo_attachment_id")
+	private Attachment logoAttachment;
+
+	@Column(name = "logo_attachment_id", insertable = false, updatable = false)
+	private UUID logoAttachmentId;
+
 	@Enumerated(EnumType.STRING)
 	@Column(name = "type", columnDefinition = "VARCHAR(255)")
 	private CommunityType type;

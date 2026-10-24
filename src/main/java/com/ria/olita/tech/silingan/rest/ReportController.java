@@ -1,5 +1,6 @@
 package com.ria.olita.tech.silingan.rest;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -17,9 +18,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ria.olita.tech.silingan.dto.req.CreateReportRequest;
+import com.ria.olita.tech.silingan.dto.req.ReportFilterCriteria;
 import com.ria.olita.tech.silingan.dto.req.UpdateReportRequest;
 import com.ria.olita.tech.silingan.dto.res.ReportResponse;
 import com.ria.olita.tech.silingan.entity.IssueStatus;
+import com.ria.olita.tech.silingan.entity.UrgencyLevel;
 import com.ria.olita.tech.silingan.service.ReportService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,15 +47,52 @@ public class ReportController {
 	}
 
 	@GetMapping
-	@Operation(summary = "Get paginated reports")
+	@Operation(summary = "Get paginated reports with advanced filtering and sorting")
 	public ResponseEntity<Page<ReportResponse>> getPaginatedReports(
-		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000")
-		@RequestParam UUID communityId,
+		@Parameter(description = "Community ID (required for non-admin users)", example = "550e8400-e29b-41d4-a716-446655440000")
+		@RequestParam(required = false) UUID communityId,
 		@Parameter(description = "Optional report status filter", example = "OPEN")
 		@RequestParam(required = false) IssueStatus status,
+		@Parameter(description = "Filter by urgency level")
+		@RequestParam(required = false) UrgencyLevel urgencyLevel,
+		@Parameter(description = "Filter by issue category ID")
+		@RequestParam(required = false) UUID categoryId,
+		@Parameter(description = "Filter by assigned-to user ID")
+		@RequestParam(required = false) UUID assignedToId,
+		@Parameter(description = "Filter by reporter user ID")
+		@RequestParam(required = false) UUID reporterId,
+		@Parameter(description = "Filter by assigned status (true = assigned, false = unassigned)")
+		@RequestParam(required = false) Boolean assigned,
+		@Parameter(description = "Search keyword in title or description")
+		@RequestParam(required = false) String keyword,
+		@Parameter(description = "Filter by location")
+		@RequestParam(required = false) String location,
+		@Parameter(description = "Filter reports created from this date (ISO format)")
+		@RequestParam(required = false) LocalDateTime createdAtFrom,
+		@Parameter(description = "Filter reports created until this date (ISO format)")
+		@RequestParam(required = false) LocalDateTime createdAtTo,
+		@Parameter(description = "Filter reports resolved from this date (ISO format)")
+		@RequestParam(required = false) LocalDateTime resolvedAtFrom,
+		@Parameter(description = "Filter reports resolved until this date (ISO format)")
+		@RequestParam(required = false) LocalDateTime resolvedAtTo,
 		Pageable pageable
 	) {
-		return ResponseEntity.ok(reportService.getReports(communityId, status, pageable));
+		ReportFilterCriteria filterCriteria = ReportFilterCriteria.builder()
+			.status(status)
+			.urgencyLevel(urgencyLevel)
+			.categoryId(categoryId)
+			.assignedToId(assignedToId)
+			.reporterId(reporterId)
+			.assigned(assigned)
+			.keyword(keyword)
+			.location(location)
+			.createdAtFrom(createdAtFrom)
+			.createdAtTo(createdAtTo)
+			.resolvedAtFrom(resolvedAtFrom)
+			.resolvedAtTo(resolvedAtTo)
+			.build();
+		
+		return ResponseEntity.ok(reportService.getReportsWithFilters(communityId, filterCriteria, pageable));
 	}
 
 	@GetMapping("/{reportId}")

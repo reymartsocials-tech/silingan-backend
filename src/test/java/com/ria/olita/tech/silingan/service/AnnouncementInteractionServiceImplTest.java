@@ -52,6 +52,7 @@ import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
 import com.ria.olita.tech.silingan.service.impl.AnnouncementInteractionRecorder;
 import com.ria.olita.tech.silingan.service.impl.AnnouncementServiceImpl;
+import com.ria.olita.tech.silingan.service.NotificationService;
 
 /**
  * Exercises the resident interaction behaviour against an in-memory store that enforces the same
@@ -68,6 +69,7 @@ class AnnouncementInteractionServiceImplTest {
 	private final AnnouncementAcknowledgementRepository acknowledgementRepository = Mockito.mock(AnnouncementAcknowledgementRepository.class);
 	private final AnnouncementHelpfulMarkRepository helpfulMarkRepository = Mockito.mock(AnnouncementHelpfulMarkRepository.class);
 	private final AnnouncementInteractionRecorder interactionRecorder = Mockito.mock(AnnouncementInteractionRecorder.class);
+	private final NotificationService notificationService = Mockito.mock(NotificationService.class);
 
 	private final AnnouncementServiceImpl service = new AnnouncementServiceImpl(
 		announcementRepository,
@@ -78,7 +80,8 @@ class AnnouncementInteractionServiceImplTest {
 		acknowledgementRepository,
 		helpfulMarkRepository,
 		interactionRecorder,
-		new AnnouncementMapperImpl()
+		new AnnouncementMapperImpl(),
+		notificationService
 	);
 
 	/** Stand-in for a table whose unique key is (announcement, membership). */

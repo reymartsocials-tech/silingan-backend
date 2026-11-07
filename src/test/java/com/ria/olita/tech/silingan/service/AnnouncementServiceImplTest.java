@@ -51,6 +51,7 @@ import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
 import com.ria.olita.tech.silingan.service.impl.AnnouncementInteractionRecorder;
 import com.ria.olita.tech.silingan.service.impl.AnnouncementServiceImpl;
+import com.ria.olita.tech.silingan.service.NotificationService;
 
 class AnnouncementServiceImplTest {
 
@@ -62,6 +63,7 @@ class AnnouncementServiceImplTest {
 	private final AnnouncementAcknowledgementRepository acknowledgementRepository = Mockito.mock(AnnouncementAcknowledgementRepository.class);
 	private final AnnouncementHelpfulMarkRepository helpfulMarkRepository = Mockito.mock(AnnouncementHelpfulMarkRepository.class);
 	private final AnnouncementInteractionRecorder interactionRecorder = Mockito.mock(AnnouncementInteractionRecorder.class);
+	private final NotificationService notificationService = Mockito.mock(NotificationService.class);
 
 	private final AnnouncementServiceImpl service = new AnnouncementServiceImpl(
 		announcementRepository,
@@ -72,7 +74,8 @@ class AnnouncementServiceImplTest {
 		acknowledgementRepository,
 		helpfulMarkRepository,
 		interactionRecorder,
-		new AnnouncementMapperImpl()
+		new AnnouncementMapperImpl(),
+		notificationService
 	);
 
 	private final UUID communityA = UUID.randomUUID();
@@ -454,6 +457,7 @@ class AnnouncementServiceImplTest {
 		assertThat(response.publishedAt()).isNotNull();
 		assertThat(response.publishedBy()).isEqualTo(admin.getId());
 		assertThat(response.createdAt()).isEqualTo(createdAt);
+		verify(notificationService).createNotificationsForCommunityResidents(any());
 	}
 
 	@Test
@@ -468,6 +472,7 @@ class AnnouncementServiceImplTest {
 		assertThat(response.status()).isEqualTo(AnnouncementStatus.PUBLISHED);
 		assertThat(response.publishedAt()).isEqualTo(originalPublishedAt);
 		verify(announcementRepository, never()).save(any());
+		verify(notificationService, never()).createNotificationsForCommunityResidents(any());
 	}
 
 	@Test

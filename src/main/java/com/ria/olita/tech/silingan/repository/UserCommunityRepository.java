@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.Optional;
 import java.util.Collection;
+import org.springframework.data.domain.Pageable;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -100,6 +101,17 @@ public interface UserCommunityRepository extends JpaRepository<UserCommunity, UU
 			"AND uc.user.id IN :userIds " +
 			"AND uc.roleCode IS NOT NULL")
 	List<UserCommunity> findByCommunityIdAndUserIdInWithStaffRole(UUID communityId, Collection<UUID> userIds);
+
+	@Query("""
+		SELECT uc.userId
+		FROM UserCommunity uc
+		JOIN uc.user u
+		WHERE uc.communityId = :communityId
+			AND uc.role = :role
+			AND u.status = 'ACTIVE'
+		ORDER BY uc.userId
+		""")
+	List<UUID> findActiveUserIdsByCommunityIdAndRole(UUID communityId, SilinganRealmRole role, Pageable pageable);
 
 	/**
 	 * Deactivate user and membership when invitation is revoked.

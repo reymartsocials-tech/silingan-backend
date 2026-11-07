@@ -1,6 +1,7 @@
 package com.ria.olita.tech.silingan.service.impl;
 
 import com.ria.olita.tech.silingan.dto.req.AnnouncementFilterCriteria;
+import com.ria.olita.tech.silingan.dto.req.CreateCommunityNotificationCommand;
 import com.ria.olita.tech.silingan.dto.req.CreateAnnouncementRequest;
 import com.ria.olita.tech.silingan.dto.req.UpdateAnnouncementRequest;
 import com.ria.olita.tech.silingan.dto.res.AnnouncementResponse;
@@ -13,6 +14,10 @@ import com.ria.olita.tech.silingan.entity.AttachmentOwnerType;
 import com.ria.olita.tech.silingan.entity.AttachmentReference;
 import com.ria.olita.tech.silingan.entity.Community;
 import com.ria.olita.tech.silingan.entity.CommunityStatus;
+import com.ria.olita.tech.silingan.entity.NotificationCategory;
+import com.ria.olita.tech.silingan.entity.NotificationPriority;
+import com.ria.olita.tech.silingan.entity.NotificationReferenceType;
+import com.ria.olita.tech.silingan.entity.NotificationType;
 import com.ria.olita.tech.silingan.entity.User;
 import com.ria.olita.tech.silingan.entity.UserCommunity;
 import com.ria.olita.tech.silingan.entity.rbac.Domain;
@@ -32,6 +37,7 @@ import com.ria.olita.tech.silingan.repository.spec.AnnouncementSpecifications;
 import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
 import com.ria.olita.tech.silingan.service.AnnouncementService;
+import com.ria.olita.tech.silingan.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -72,6 +78,7 @@ public class AnnouncementServiceImpl implements AnnouncementService {
 	private final AnnouncementHelpfulMarkRepository helpfulMarkRepository;
 	private final AnnouncementInteractionRecorder interactionRecorder;
 	private final AnnouncementMapper announcementMapper;
+	private final NotificationService notificationService;
 
 	@Override
 	@Transactional
@@ -188,6 +195,18 @@ public class AnnouncementServiceImpl implements AnnouncementService {
 		announcement.setPublishedBy(resolveCurrentUser());
 
 		Announcement saved = announcementRepository.save(announcement);
+		notificationService.createNotificationsForCommunityResidents(CreateCommunityNotificationCommand.builder()
+			.communityId(saved.getCommunityId())
+			.type(NotificationType.ANNOUNCEMENT_PUBLISHED)
+			.category(NotificationCategory.ANNOUNCEMENT)
+			.priority(saved.isPinned() ? NotificationPriority.IMPORTANT : NotificationPriority.NORMAL)
+			.title(saved.getTitle())
+			.body(toNotificationBody(saved.getContent()))
+			.referenceType(NotificationReferenceType.ANNOUNCEMENT)
+			.referenceId(saved.getId().toString())
+			.actionPath("/announcements/" + saved.getId())
+			.sourceEventId("announcement-published:" + saved.getId())
+			.build());
 		return buildAnnouncementResponseWithAttachments(saved);
 	}
 
@@ -473,6 +492,17 @@ public class AnnouncementServiceImpl implements AnnouncementService {
 			throw new ValidationException(field + " must not be blank");
 		}
 		return value;
+	}
+
+	private String toNotificationBody(String content) {
+		if (content == null) {
+			return "";
+		}
+		String trimmed = content.trim();
+		if (trimmed.length() <= 2000) {
+			return trimmed;
+		}
+		return trimmed.substring(0, 1997) + "...";
 	}
 
 	/**

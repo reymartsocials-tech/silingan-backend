@@ -284,4 +284,37 @@ public interface InvitationRepository extends JpaRepository<Invitation, UUID> {
 		@Param("email") String email,
 		@Param("statuses") List<InvitationStatus> statuses
 	);
+
+	// ===== PLATFORM DASHBOARD =====
+
+	@Query("SELECT COUNT(i) FROM Invitation i JOIN i.community c " +
+		"WHERE i.type = :type AND i.status = :status AND i.expiresAt > :now")
+	long countPendingByType(
+		@Param("type") InvitationType type,
+		@Param("status") InvitationStatus status,
+		@Param("now") LocalDateTime now
+	);
+
+	/**
+	 * Pending at {@code at}, reconstructed from the retained invited/expires/accepted/revoked timestamps
+	 * rather than the current status.
+	 */
+	@Query("SELECT COUNT(i) FROM Invitation i JOIN i.community c " +
+		"WHERE i.type = :type AND i.invitedAt <= :at AND i.expiresAt > :at " +
+		"AND (i.acceptedAt IS NULL OR i.acceptedAt > :at) AND (i.revokedAt IS NULL OR i.revokedAt > :at)")
+	long countPendingAt(@Param("type") InvitationType type, @Param("at") LocalDateTime at);
+
+	@Query("SELECT new com.ria.olita.tech.silingan.repository.PlatformActivityRow(i.id, c.id, c.name, i.invitedAt) " +
+		"FROM Invitation i JOIN i.community c WHERE i.type = :type ORDER BY i.invitedAt DESC, i.id DESC")
+	List<PlatformActivityRow> findRecentInvited(@Param("type") InvitationType type, Pageable pageable);
+
+	@Query("SELECT new com.ria.olita.tech.silingan.repository.PlatformActivityRow(i.id, c.id, c.name, i.acceptedAt) " +
+		"FROM Invitation i JOIN i.community c WHERE i.type = :type AND i.acceptedAt IS NOT NULL " +
+		"ORDER BY i.acceptedAt DESC, i.id DESC")
+	List<PlatformActivityRow> findRecentAccepted(@Param("type") InvitationType type, Pageable pageable);
+
+	@Query("SELECT new com.ria.olita.tech.silingan.repository.PlatformActivityRow(i.id, c.id, c.name, i.revokedAt) " +
+		"FROM Invitation i JOIN i.community c WHERE i.type = :type AND i.revokedAt IS NOT NULL " +
+		"ORDER BY i.revokedAt DESC, i.id DESC")
+	List<PlatformActivityRow> findRecentRevoked(@Param("type") InvitationType type, Pageable pageable);
 }

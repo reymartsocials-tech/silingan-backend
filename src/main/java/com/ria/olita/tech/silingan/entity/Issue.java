@@ -1,5 +1,8 @@
 package com.ria.olita.tech.silingan.entity;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import org.hibernate.annotations.Filter;
@@ -18,6 +21,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -64,30 +68,41 @@ public class Issue extends BaseEntity {
 	@Enumerated(EnumType.STRING)
 	private IssueStatus status = IssueStatus.OPEN;
 
+	@Column(name = "urgency_level", columnDefinition = "VARCHAR(50)")
+	@Enumerated(EnumType.STRING)
+	private UrgencyLevel urgencyLevel;
+
 	@ManyToOne
 	@JoinColumn(name = "reporter_id", columnDefinition = "UUID NOT NULL")
 	private User reporter;
 
 	@ManyToOne
+	@JoinColumn(name = "assigned_to_user_id", columnDefinition = "UUID")
+	private User assignedTo;
+
+	@ManyToOne
 	@JoinColumn(name = "category_id", columnDefinition = "UUID NOT NULL")
 	private IssueCategory category;
 
-	// Optional custom category for dynamically defined categories
 	@Column(name = "custom_category", columnDefinition = "VARCHAR(255)")
 	private String customCategory;
 
-	// Optional image URL
-	@Column(name = "image_url", columnDefinition = "VARCHAR(255)")
-	private String imageUrl;
-
-	// Optional location (address string)
 	@Column(name = "location", columnDefinition = "VARCHAR(255)")
 	private String location;
 
-	// Optional coordinates
 	@Column(name = "latitude", columnDefinition = "DOUBLE PRECISION")
 	private Double latitude;
 
 	@Column(name = "longitude", columnDefinition = "DOUBLE PRECISION")
 	private Double longitude;
+
+	@Column(name = "resolved_at", columnDefinition = "TIMESTAMP")
+	private LocalDateTime resolvedAt;
+
+	@Column(name = "resolution_notes", columnDefinition = "VARCHAR(2000)")
+	private String resolutionNotes;
+
+	@Transient
+	@Builder.Default
+	private List<AttachmentReference> attachmentReferences = new ArrayList<>();
 }

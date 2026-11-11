@@ -1,7 +1,5 @@
 package com.ria.olita.tech.silingan.security.context;
 
-import static com.ria.olita.tech.silingan.entity.InvitationStatus.PENDING;
-import static com.ria.olita.tech.silingan.entity.rbac.StaffRoleCatalog.roles;
 
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.FilterChain;
@@ -21,8 +19,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;

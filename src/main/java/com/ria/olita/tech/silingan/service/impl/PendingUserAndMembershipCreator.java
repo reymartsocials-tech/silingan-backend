@@ -2,6 +2,9 @@ package com.ria.olita.tech.silingan.service.impl;
 
 import static com.ria.olita.tech.silingan.entity.UserStatus.PENDING;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,15 +61,24 @@ public class PendingUserAndMembershipCreator {
 			userCommunityRepository
 				.findByUserIdAndCommunityId(user.getId(), invitation.getCommunityId())
 				.orElseGet(() -> {
-					UserCommunity newMembership = UserCommunity.builder()
+					UserCommunity.UserCommunityBuilder builder = UserCommunity.builder()
 						.user(user)
 						.community(invitation.getCommunity())
 						.role(invitation.getType() == InvitationType.ADMIN
 							? SilinganRealmRole.COMMUNITY_ADMIN
-							: SilinganRealmRole.STAFF)
-						.build();
-					log.info("Creating pending community membership during invitation: user={}, community={}, role={}",
-						user.getId(), invitation.getCommunityId(), newMembership.getRole());
+							: SilinganRealmRole.STAFF);
+					
+					// Populate staff role fields if invitation has roleCode
+					if (invitation.getRoleCode() != null) {
+						builder
+							.roleCode(invitation.getRoleCode())
+							.assignedAt(LocalDateTime.now(ZoneOffset.UTC))
+							.assignedBy(invitation.getInvitedBy());
+					}
+					
+					UserCommunity newMembership = builder.build();
+					log.info("Creating pending community membership during invitation: user={}, community={}, role={}, staffRole={}",
+						user.getId(), invitation.getCommunityId(), newMembership.getRole(), newMembership.getRoleCode());
 					return userCommunityRepository.save(newMembership);
 				});
 

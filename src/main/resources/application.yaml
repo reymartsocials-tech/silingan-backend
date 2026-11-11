@@ -97,7 +97,7 @@ logging:
 
 otp:
   length: 6
-  expiration-minutes: 5
+  expiration-minutes: 30
   max-attempts: 3
   cooldown-seconds: 60
   registration-proof-minutes: 10

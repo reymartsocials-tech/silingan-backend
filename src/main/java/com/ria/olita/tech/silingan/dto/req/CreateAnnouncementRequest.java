@@ -21,6 +21,7 @@ public record CreateAnnouncementRequest(
 	@Schema(example = "Community General Assembly") String title,
 
 	@NotBlank
+	@Size(max = 10000)
 	@Schema(example = "Please attend the general assembly this Saturday at 2PM.") String content,
 
 	@NotNull

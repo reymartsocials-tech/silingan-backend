@@ -5,6 +5,7 @@ import com.ria.olita.tech.silingan.entity.AnnouncementStatus;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import lombok.Builder;
@@ -19,9 +20,12 @@ public record AnnouncementResponse(
 	AnnouncementStatus status,
 	boolean pinned,
 	Instant publishAt,
+	LocalDateTime publishedAt,
+	UUID publishedBy,
 	LocalDateTime createdAt,
 	LocalDateTime updatedAt,
 	UUID createdBy,
-	UUID updatedBy
+	UUID updatedBy,
+	List<AttachmentResponse> attachments
 ) {
 }

@@ -1,16 +1,22 @@
 package com.ria.olita.tech.silingan.service.impl;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.ria.olita.tech.silingan.dto.req.CreateReportRequest;
-import com.ria.olita.tech.silingan.dto.req.UpdateReportRequest;
+import com.ria.olita.tech.silingan.dto.res.AttachmentResponse;
 import com.ria.olita.tech.silingan.dto.res.ReportResponse;
+import com.ria.olita.tech.silingan.dto.req.CreateReportRequest;
+import com.ria.olita.tech.silingan.dto.req.ReportFilterCriteria;
+import com.ria.olita.tech.silingan.dto.req.UpdateReportRequest;
+import com.ria.olita.tech.silingan.entity.AttachmentOwnerType;
 import com.ria.olita.tech.silingan.entity.Community;
+import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.Issue;
 import com.ria.olita.tech.silingan.entity.IssueCategory;
 import com.ria.olita.tech.silingan.entity.IssueStatus;
@@ -20,11 +26,13 @@ import com.ria.olita.tech.silingan.entity.rbac.Domain;
 import com.ria.olita.tech.silingan.exception.ForbiddenException;
 import com.ria.olita.tech.silingan.exception.NotFoundException;
 import com.ria.olita.tech.silingan.exception.ValidationException;
+import com.ria.olita.tech.silingan.repository.AttachmentReferenceRepository;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
 import com.ria.olita.tech.silingan.repository.IssueCategoryRepository;
 import com.ria.olita.tech.silingan.repository.IssueRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
+import com.ria.olita.tech.silingan.repository.spec.IssueSpecifications;
 import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
 import com.ria.olita.tech.silingan.service.ReportService;
@@ -41,6 +49,7 @@ public class ReportServiceImpl implements ReportService {
 	private final CommunityRepository communityRepository;
 	private final UserRepository userRepository;
 	private final UserCommunityRepository userCommunityRepository;
+	private final AttachmentReferenceRepository attachmentReferenceRepository;
 
 	@Override
 	public ReportResponse submitReport(CreateReportRequest request) {
@@ -49,7 +58,7 @@ public class ReportServiceImpl implements ReportService {
 		User currentUser = userRepository.findById(currentUserId)
 			.orElseThrow(() -> new NotFoundException("User not found"));
 
-		Community community = communityRepository.findById(request.communityId())
+		Community community = communityRepository.findByIdAndStatus(request.communityId(), CommunityStatus.ACTIVE)
 			.orElseThrow(() -> new NotFoundException("Community not found"));
 
 		ensureMembership(currentUserId, request.communityId());
@@ -71,13 +80,14 @@ public class ReportServiceImpl implements ReportService {
 			.description(request.description())
 			.status(IssueStatus.OPEN)
 			.customCategory(request.customCategory())
-			.imageUrl(request.imageUrl())
+			.urgencyLevel(request.urgencyLevel())
 			.location(request.location())
 			.latitude(request.latitude())
 			.longitude(request.longitude())
 			.build();
 
-		return ReportResponse.fromEntity(issueRepository.save(issue));
+		Issue saved = issueRepository.save(issue);
+		return buildReportResponseWithAttachments(saved);
 	}
 
 	@Override
@@ -99,7 +109,39 @@ public class ReportServiceImpl implements ReportService {
 			issues = issueRepository.findByReporterIdAndCommunityId(currentUserId, communityId, pageable);
 		}
 
-		return issues.map(ReportResponse::fromEntity);
+		return issues.map(this::buildReportResponseWithAttachments);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Page<ReportResponse> getReportsWithFilters(UUID communityId, ReportFilterCriteria criteria, Pageable pageable) {
+		UserContext context = requireContext();
+		UUID currentUserId = parseCurrentUserId(context);
+
+		if (communityId == null && !UserContextHolder.isPlatformAdmin()) {
+			throw new ValidationException("Community ID is required for non-admin users");
+		}
+
+		if (communityId != null) {
+			communityRepository.findByIdAndStatus(communityId, CommunityStatus.ACTIVE)
+				.orElseThrow(() -> new NotFoundException("Community not found"));
+			ensureMembership(currentUserId, communityId);
+		}
+
+		Page<Issue> issues;
+		if (communityId != null && !canViewAllReports(context, communityId)) {
+			issues = issueRepository.findAll(
+				IssueSpecifications.filterByReporterAndCriteria(communityId, currentUserId, criteria),
+				pageable
+			);
+		} else {
+			issues = issueRepository.findAll(
+				IssueSpecifications.filterByCommunityAndCriteria(communityId, criteria),
+				pageable
+			);
+		}
+
+		return issues.map(this::buildReportResponseWithAttachments);
 	}
 
 	@Override
@@ -108,7 +150,7 @@ public class ReportServiceImpl implements ReportService {
 		UserContext context = requireContext();
 		UUID currentUserId = parseCurrentUserId(context);
 
-		Issue issue = issueRepository.findById(reportId)
+		Issue issue = issueRepository.findByIdWithDetails(reportId)
 			.orElseThrow(() -> new NotFoundException("Report not found"));
 		ensureMembership(currentUserId, issue.getCommunityId());
 
@@ -116,7 +158,7 @@ public class ReportServiceImpl implements ReportService {
 			throw new ForbiddenException("You are not allowed to view this report");
 		}
 
-		return ReportResponse.fromEntity(issue);
+		return buildReportResponseWithAttachments(issue);
 	}
 
 	@Override
@@ -147,8 +189,8 @@ public class ReportServiceImpl implements ReportService {
 		if (request.customCategory() != null) {
 			issue.setCustomCategory(request.customCategory());
 		}
-		if (request.imageUrl() != null) {
-			issue.setImageUrl(request.imageUrl());
+		if (request.urgencyLevel() != null) {
+			issue.setUrgencyLevel(request.urgencyLevel());
 		}
 		if (request.location() != null) {
 			issue.setLocation(request.location());
@@ -172,9 +214,25 @@ public class ReportServiceImpl implements ReportService {
 				throw new ForbiddenException("Only staff/community administrators can change report status");
 			}
 			issue.setStatus(request.status());
+			if (isTerminal(request.status()) && issue.getResolvedAt() == null) {
+				issue.setResolvedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
+			}
+		}
+		if (request.assignedToUserId() != null) {
+			if (!canManageAll) {
+				throw new ForbiddenException("Only staff/community administrators can assign reports");
+			}
+			User assignedTo = userRepository.findById(request.assignedToUserId())
+				.orElseThrow(() -> new NotFoundException("Assigned user not found"));
+			ensureMembership(request.assignedToUserId(), issue.getCommunityId());
+			issue.setAssignedTo(assignedTo);
+		}
+		if (request.resolutionNotes() != null) {
+			issue.setResolutionNotes(request.resolutionNotes());
 		}
 
-		return ReportResponse.fromEntity(issueRepository.save(issue));
+		Issue saved = issueRepository.save(issue);
+		return buildReportResponseWithAttachments(saved);
 	}
 
 	@Override
@@ -196,7 +254,50 @@ public class ReportServiceImpl implements ReportService {
 		}
 
 		issue.setStatus(IssueStatus.CANCELLED);
-		return ReportResponse.fromEntity(issueRepository.save(issue));
+		Issue saved = issueRepository.save(issue);
+		return buildReportResponseWithAttachments(saved);
+	}
+
+	private ReportResponse buildReportResponseWithAttachments(Issue issue) {
+		ReportResponse response = ReportResponse.fromEntity(issue);
+		
+		List<AttachmentResponse> attachments = attachmentReferenceRepository
+			.findByOwnerTypeAndOwnerId(AttachmentOwnerType.REPORT, issue.getId())
+			.stream()
+			.map(ref -> AttachmentResponse.builder()
+				.id(ref.getAttachment().getId())
+				.originalFileName(ref.getAttachment().getOriginalFileName())
+				.fileName(ref.getAttachment().getFileName())
+				.contentType(ref.getAttachment().getContentType())
+				.fileSize(ref.getAttachment().getFileSize())
+				.filePath(ref.getAttachment().getFilePath())
+				.publicUrl(ref.getAttachment().getFilePath())
+				.build())
+			.collect(Collectors.toList());
+		
+		return new ReportResponse(
+			response.id(),
+			response.communityId(),
+			response.reporterId(),
+			response.reporterName(),
+			response.assignedToId(),
+			response.assignedToName(),
+			response.categoryId(),
+			response.categoryName(),
+			response.title(),
+			response.description(),
+			response.status(),
+			response.urgencyLevel(),
+			response.customCategory(),
+			response.location(),
+			response.latitude(),
+			response.longitude(),
+			response.createdAt(),
+			response.updatedAt(),
+			response.resolvedAt(),
+			response.resolutionNotes(),
+			attachments
+		);
 	}
 
 	private UserContext requireContext() {

@@ -42,6 +42,7 @@ public class CommunityStatementInspector implements StatementInspector {
 		return sql.contains("announcements")
 									|| sql.contains("issues")
 									|| sql.contains("media")
+									|| sql.contains("directory_contacts")
 									|| sql.contains("community_admin_invitations");
 	}
 

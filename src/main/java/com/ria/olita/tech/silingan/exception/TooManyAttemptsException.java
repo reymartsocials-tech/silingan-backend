@@ -11,8 +11,5 @@ public class TooManyAttemptsException extends ServiceException {
         super(CODE, "Maximum verification attempts exceeded. OTP has been invalidated. Please request a new one");
     }
 
-    public TooManyAttemptsException(String message) {
-        super(CODE, message);
-    }
 }
 

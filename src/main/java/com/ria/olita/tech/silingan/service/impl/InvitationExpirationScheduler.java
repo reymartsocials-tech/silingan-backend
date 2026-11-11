@@ -36,10 +36,10 @@ public class InvitationExpirationScheduler {
 	/**
 	 * Marks all pending invitations that have expired as EXPIRED.
 	 *
-	 * <p>Runs daily at 2 AM UTC. Invitations with a past {@code expiresAt} and status
+	 * <p>Runs daily at 6 PM UTC. Invitations with a past {@code expiresAt} and status
 	 * {@link InvitationStatus#PENDING} are transitioned to {@link InvitationStatus#EXPIRED}.
 	 */
-	@Scheduled(cron = "0 0 2 * * *")
+	@Scheduled(cron = "0 0 18 * * *", zone = "UTC")
 	public void expireOldInvitations() {
 		try {
 			LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);

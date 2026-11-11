@@ -139,4 +139,13 @@ public interface UserCommunityRepository extends JpaRepository<UserCommunity, UU
 		@org.springframework.data.repository.query.Param("role") SilinganRealmRole role,
 		@org.springframework.data.repository.query.Param("userStatus") com.ria.olita.tech.silingan.entity.UserStatus userStatus
 	);
+
+	@Query("SELECT COUNT(uc) FROM UserCommunity uc " +
+		"JOIN uc.user u " +
+		"WHERE uc.community.id = :communityId AND uc.role IN :roles AND u.status = :userStatus")
+	long countByCommunityIdAndRoleInAndUserStatus(
+		@org.springframework.data.repository.query.Param("communityId") UUID communityId,
+		@org.springframework.data.repository.query.Param("roles") Collection<SilinganRealmRole> roles,
+		@org.springframework.data.repository.query.Param("userStatus") com.ria.olita.tech.silingan.entity.UserStatus userStatus
+	);
 }

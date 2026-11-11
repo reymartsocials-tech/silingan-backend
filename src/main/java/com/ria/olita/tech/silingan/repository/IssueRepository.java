@@ -1,5 +1,10 @@
 package com.ria.olita.tech.silingan.repository;
 
+import org.springframework.data.repository.query.Param;
+import com.ria.olita.tech.silingan.dto.res.DashboardReportStatusResponse;
+import com.ria.olita.tech.silingan.dto.res.DashboardReportResponse;
+import java.util.List;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,4 +42,16 @@ public interface IssueRepository extends JpaRepository<Issue, UUID>, JpaSpecific
 	@EntityGraph(attributePaths = {"reporter", "category", "community", "assignedTo"})
 	@Override
 	Page<Issue> findAll(Specification<Issue> spec, Pageable pageable);
+
+	/** Grouped in the database; soft-deleted rows are excluded by the entity's {@code @SQLRestriction}. */
+	@Query("SELECT new com.ria.olita.tech.silingan.dto.res.DashboardReportStatusResponse(i.status, COUNT(i)) " +
+			"FROM Issue i WHERE i.communityId = :communityId GROUP BY i.status")
+	List<DashboardReportStatusResponse> countByStatusForCommunity(@Param("communityId") UUID communityId);
+
+	/** Preview projection; the caller bounds the result through {@code pageable} (no count query is issued). */
+	@Query("SELECT new com.ria.olita.tech.silingan.dto.res.DashboardReportResponse(" +
+			"i.id, i.title, COALESCE(i.customCategory, c.name), i.status, i.urgencyLevel, i.createdAt) " +
+			"FROM Issue i JOIN i.category c WHERE i.communityId = :communityId " +
+			"ORDER BY i.createdAt DESC, i.id DESC")
+	List<DashboardReportResponse> findRecentForDashboard(@Param("communityId") UUID communityId, Pageable pageable);
 }

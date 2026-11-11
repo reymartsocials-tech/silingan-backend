@@ -160,13 +160,13 @@ public class CommunityDashboardServiceImpl implements CommunityDashboardService 
 
 	public static DashboardMetricResponse withComparison(long current, long previous) {
 		if (previous <= 0) {
-			return DashboardMetricResponse.unavailable(current);
+			return new DashboardMetricResponse(current, null, false, previous);
 		}
 		double change = BigDecimal.valueOf(current - previous)
 			.multiply(BigDecimal.valueOf(100))
 			.divide(BigDecimal.valueOf(previous), 1, RoundingMode.HALF_UP)
 			.doubleValue();
-		return new DashboardMetricResponse(current, change, true);
+		return new DashboardMetricResponse(current, change, true, previous);
 	}
 
 	private List<DashboardContactResponse> directoryContacts(UUID communityId) {

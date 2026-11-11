@@ -7,10 +7,12 @@ package com.ria.olita.tech.silingan.dto.res;
 public record DashboardMetricResponse(
 	long value,
 	Double percentageChange,
-	boolean comparisonAvailable
+	boolean comparisonAvailable,
+	Long previousValue
 ) {
 
+	/** The previous-period value is unknown, so nothing is compared. */
 	public static DashboardMetricResponse unavailable(long value) {
-		return new DashboardMetricResponse(value, null, false);
+		return new DashboardMetricResponse(value, null, false, null);
 	}
 }

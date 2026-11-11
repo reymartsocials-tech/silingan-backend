@@ -8,6 +8,7 @@ import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.CommunityType;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
@@ -58,6 +59,22 @@ public interface CommunityRepository extends JpaRepository<Community, UUID> {
 				(left, right) -> left
 			));
 	}
+
+	@Modifying
+	@Query("UPDATE Community c SET c.deleted = true, c.deletedAt = :at WHERE c.id = :id")
+	int softDelete(@Param("id") UUID id, @Param("at") LocalDateTime at);
+
+	/**
+	 * Communities that existed at {@code at}: created by then and not yet soft-deleted. Native, because
+	 * the entity's {@code @SQLRestriction} would hide the since-deleted rows that were still live then.
+	 */
+	@Query(value = "SELECT COUNT(*) FROM communities WHERE created_at <= :at " +
+		"AND (deleted = false OR deleted_at > :at)", nativeQuery = true)
+	long countExistingAt(@Param("at") LocalDateTime at);
+
+	/** Soft-deleted rows without a deletion time (no history), which make a past total unreliable. */
+	@Query(value = "SELECT COUNT(*) FROM communities WHERE deleted = true AND deleted_at IS NULL", nativeQuery = true)
+	long countDeletedWithoutTimestamp();
 
 	/** One grouped query; soft-deleted communities are excluded by the entity's {@code @SQLRestriction}. */
 	@Query("SELECT new com.ria.olita.tech.silingan.repository.CommunityStatusCount(c.status, COUNT(c), " +

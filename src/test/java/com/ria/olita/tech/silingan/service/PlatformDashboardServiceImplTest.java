@@ -98,12 +98,38 @@ class PlatformDashboardServiceImplTest {
 
 		assertThat(metrics.pendingInvitations().percentageChange()).isEqualTo(50.0);
 		assertThat(metrics.pendingInvitations().comparisonAvailable()).isTrue();
-		assertThat(metrics.totalCommunities().comparisonAvailable()).isFalse();
+		assertThat(metrics.pendingInvitations().previousValue()).isEqualTo(2L);
 		assertThat(metrics.totalResidents().percentageChange()).isNull();
 		assertThat(metrics.totalAdmins().comparisonAvailable()).isFalse();
 
 		when(invitations.countPendingAt(eq(InvitationType.ADMIN), any())).thenReturn(0L);
 		var zero = service.getDashboard(PlatformGrowthPeriod.SIX_MONTHS).metrics().pendingInvitations();
+		assertThat(zero.percentageChange()).isNull();
+		assertThat(zero.comparisonAvailable()).isFalse();
+	}
+
+	@Test
+	void totalCommunitiesIsComparedWithPastTotalIncludingSinceDeleted() {
+		when(communities.countByStatusWithAdmin()).thenReturn(List.of(new CommunityStatusCount(CommunityStatus.ACTIVE, 12, 12)));
+		when(communities.countExistingAt(any())).thenReturn(10L);
+
+		var metric = service.getDashboard(PlatformGrowthPeriod.SIX_MONTHS).metrics().totalCommunities();
+
+		assertThat(metric.value()).isEqualTo(12);
+		assertThat(metric.previousValue()).isEqualTo(10L);
+		assertThat(metric.percentageChange()).isEqualTo(20.0);
+		assertThat(metric.comparisonAvailable()).isTrue();
+	}
+
+	@Test
+	void totalCommunitiesComparisonUnavailableWhenDeletionTimeIsMissingOrPastTotalZero() {
+		when(communities.countDeletedWithoutTimestamp()).thenReturn(1L);
+		when(communities.countExistingAt(any())).thenReturn(10L);
+		assertThat(service.getDashboard(PlatformGrowthPeriod.SIX_MONTHS).metrics().totalCommunities().comparisonAvailable()).isFalse();
+
+		when(communities.countDeletedWithoutTimestamp()).thenReturn(0L);
+		when(communities.countExistingAt(any())).thenReturn(0L);
+		var zero = service.getDashboard(PlatformGrowthPeriod.SIX_MONTHS).metrics().totalCommunities();
 		assertThat(zero.percentageChange()).isNull();
 		assertThat(zero.comparisonAvailable()).isFalse();
 	}

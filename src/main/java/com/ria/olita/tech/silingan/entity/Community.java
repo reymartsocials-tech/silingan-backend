@@ -57,6 +57,10 @@ public class Community extends BaseEntity {
 	@Column(columnDefinition = "UUID")
 	private UUID id;
 
+	/** Set when the community is soft-deleted; lets past totals be reconstructed. */
+	@Column(name = "deleted_at", columnDefinition = "TIMESTAMP")
+	private java.time.LocalDateTime deletedAt;
+
 	@Column(name = "community_code", columnDefinition = "VARCHAR(255) NOT NULL UNIQUE")
 	private String communityCode;
 

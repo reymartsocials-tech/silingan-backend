@@ -60,9 +60,9 @@ import lombok.extern.slf4j.Slf4j;
  *       administrator is awaiting activation and is grouped as inactive.</li>
  *   <li>Pending invitation: ADMIN type, PENDING and not past {@code expiresAt}, evaluated against the
  *       request instant even if the expiry job has not run yet.</li>
- *   <li>Only pending invitations can be compared with the previous period: invited, accepted,
- *       revoked and expiry timestamps are retained. Communities, residents and administrators have no
- *       removal or deactivation history, so a past total cannot be reconstructed reliably.</li>
+ *   <li>Pending invitations and total communities can be compared with the previous period: invitation
+ *       timestamps are retained, and communities are soft-deleted with {@code deleted_at}. Residents and
+ *       administrators have no removal or deactivation history, so a past total cannot be reconstructed.</li>
  *   <li>Recent activity has no audit source, so it is derived from retained timestamps of
  *       communities and ADMIN invitations (ids are {@code TYPE:sourceId}).</li>
  * </ul>
@@ -105,7 +105,7 @@ public class PlatformDashboardServiceImpl implements PlatformDashboardService {
 		long pendingPrevious = invitationRepository.countPendingAt(InvitationType.ADMIN, previousPointUtc);
 
 		PlatformDashboardMetricsResponse metrics = new PlatformDashboardMetricsResponse(
-			DashboardMetricResponse.unavailable(byStatus.total()),
+			totalCommunities(byStatus.total(), previousPoint.toLocalDateTime()),
 			DashboardMetricResponse.unavailable(userCommunityRepository
 				.countDistinctUsersByRoleAndUserStatus(SilinganRealmRole.RESIDENT, UserStatus.ACTIVE)),
 			DashboardMetricResponse.unavailable(userCommunityRepository
@@ -121,6 +121,17 @@ public class PlatformDashboardServiceImpl implements PlatformDashboardService {
 			communitiesNeedingAttention(nowUtc),
 			permissions()
 		);
+	}
+
+	/**
+	 * Communities are soft-deleted with a deletion time, so the past total is created-by-then and not yet
+	 * deleted then. Rows soft-deleted before {@code deleted_at} existed make it unreliable, so no comparison.
+	 */
+	private DashboardMetricResponse totalCommunities(long current, java.time.LocalDateTime previousPoint) {
+		if (communityRepository.countDeletedWithoutTimestamp() > 0) {
+			return DashboardMetricResponse.unavailable(current);
+		}
+		return CommunityDashboardServiceImpl.withComparison(current, communityRepository.countExistingAt(previousPoint));
 	}
 
 	static PlatformCommunityStatusSummaryResponse summarize(List<CommunityStatusCount> counts) {

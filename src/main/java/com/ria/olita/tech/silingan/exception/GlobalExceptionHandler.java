@@ -11,6 +11,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -122,6 +123,24 @@ public class GlobalExceptionHandler {
 
 		return ResponseEntity
 			.status(HttpStatus.FORBIDDEN)
+			.body(error);
+	}
+
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ApiError> handleArgumentTypeMismatch(
+		MethodArgumentTypeMismatchException ex,
+		HttpServletRequest request) {
+
+		log.warn("Invalid value for '{}' at {}", ex.getName(), request.getRequestURI());
+
+		ApiError error = new ApiError(
+			"VALIDATION_ERROR",
+			"Invalid value for '" + ex.getName() + "'",
+			request.getRequestURI()
+		);
+
+		return ResponseEntity
+			.status(HttpStatus.BAD_REQUEST)
 			.body(error);
 	}
 

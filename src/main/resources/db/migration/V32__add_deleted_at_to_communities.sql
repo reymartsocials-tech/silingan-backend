@@ -1,0 +1,1 @@
+ALTER TABLE communities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;

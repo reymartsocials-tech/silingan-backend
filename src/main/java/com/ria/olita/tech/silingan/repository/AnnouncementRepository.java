@@ -1,5 +1,8 @@
 package com.ria.olita.tech.silingan.repository;
 
+import com.ria.olita.tech.silingan.dto.res.DashboardAnnouncementResponse;
+import java.util.List;
+import java.time.LocalDateTime;
 import com.ria.olita.tech.silingan.entity.Announcement;
 import com.ria.olita.tech.silingan.entity.AnnouncementStatus;
 import org.springframework.data.domain.Page;
@@ -58,4 +61,24 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, UUID
     @EntityGraph(attributePaths = {"community"})
     @Override
     Page<Announcement> findAll(Specification<Announcement> spec, Pageable pageable);
+
+    /** Same visibility rules as the resident feed, restricted to {@code [from, to)} by publication time. */
+    @Query("SELECT COUNT(a) FROM Announcement a WHERE a.community.id = :communityId " +
+            "AND a.status = com.ria.olita.tech.silingan.entity.AnnouncementStatus.PUBLISHED " +
+            "AND a.publishedAt IS NOT NULL AND a.publishedAt >= :from AND a.publishedAt < :to " +
+            "AND (a.publishAt IS NULL OR a.publishAt <= CURRENT_TIMESTAMP)")
+    long countPublishedBetween(@Param("communityId") UUID communityId,
+                               @Param("from") LocalDateTime from,
+                               @Param("to") LocalDateTime to);
+
+    /** Preview projection; the caller bounds the result through {@code pageable} (no count query is issued). */
+    @Query("SELECT new com.ria.olita.tech.silingan.dto.res.DashboardAnnouncementResponse(" +
+            "a.id, a.title, SUBSTRING(a.content, 1, 150), a.category, a.pinned, a.publishedAt) " +
+            "FROM Announcement a WHERE a.community.id = :communityId " +
+            "AND a.status = com.ria.olita.tech.silingan.entity.AnnouncementStatus.PUBLISHED " +
+            "AND a.publishedAt IS NOT NULL " +
+            "AND (a.publishAt IS NULL OR a.publishAt <= CURRENT_TIMESTAMP) " +
+            "ORDER BY a.publishedAt DESC, a.id DESC")
+    List<DashboardAnnouncementResponse> findRecentPublishedForDashboard(@Param("communityId") UUID communityId,
+                                                                        Pageable pageable);
 }

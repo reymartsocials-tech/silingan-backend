@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -195,7 +196,7 @@ public class CommunityServiceImpl implements CommunityService {
 		if (!communityRepository.existsById(id)) {
 			throw new NotFoundException("Community not found with id = " + id);
 		}
-		communityRepository.deleteById(id);
+		communityRepository.softDelete(id, LocalDateTime.now());
 	}
 
 

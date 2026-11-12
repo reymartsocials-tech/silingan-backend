@@ -127,6 +127,10 @@ otp:
   cache:
     max-size: ${OTP_CACHE_MAX_SIZE:10000}
 
+silingan:
+  onboarding:
+    join-base-url: ${SILINGAN_JOIN_BASE_URL:https://dev.silingan.ph/join}
+
 jwt:
   secret: ${JWT_SECRET:test-only-secret-change-me-please-32-bytes-minimum}
   issuer: ${JWT_ISSUER:silingan-backend-test}

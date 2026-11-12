@@ -104,6 +104,16 @@ otp:
   cache:
     max-size: 10000
 
+# ============================================
+# Resident onboarding entry points
+# --------------------------------------------
+# Base URL encoded into community join QR codes. Must be a SILINGAN-controlled
+# join page (HTTPS outside local development) and must not carry a query string.
+# ============================================
+silingan:
+  onboarding:
+    join-base-url: ${SILINGAN_JOIN_BASE_URL:https://app.silingan.ph/join}
+
 jwt:
   secret: ${JWT_SECRET:your-secret-key-change-me-please-at-least-32-bytes}
   issuer: ${JWT_ISSUER:silingan-backend}

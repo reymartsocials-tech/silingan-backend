@@ -31,7 +31,15 @@ public class PublicCommunityController {
 
 	@PermitAll
 	@GetMapping("/code/{code}")
-	@Operation(summary = "Get community by code (public lookup)")
+	@Operation(
+		summary = "Get community by code (public lookup)",
+		description = """
+			Validates a community code and resolves the community. This is the single validation
+			path for resident onboarding: the code may be typed manually or extracted from the
+			communityCode query parameter of a scanned SILINGAN join QR URL. Resolving a community
+			here does not authenticate the resident and does not create a membership.
+			"""
+	)
 	public ResponseEntity<ApiResponse<CommunityResponse>> getByCode(
 		@Parameter(description = "Community code", example = "GR-001") @PathVariable String code) {
 		CommunityResponse response = communityService.getByCode(code);

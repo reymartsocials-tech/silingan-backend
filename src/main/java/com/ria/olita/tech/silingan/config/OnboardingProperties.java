@@ -37,6 +37,11 @@ public class OnboardingProperties {
 	private String joinBaseUrl;
 
 	/**
+	 * Safe bounds an administrator may choose from when creating a join invitation.
+	 */
+	private final Invitation invitation = new Invitation();
+
+	/**
 	 * Parsed and validated join base URL.
 	 */
 	public URI joinBaseUri() {
@@ -49,6 +54,7 @@ public class OnboardingProperties {
 	@PostConstruct
 	void validateConfiguration() {
 		validatedUri();
+		invitation.validate();
 	}
 
 	private URI validatedUri() {
@@ -81,5 +87,41 @@ public class OnboardingProperties {
 
 	private boolean isLocalHost(String host) {
 		return LOCAL_HOST.equalsIgnoreCase(host) || LOOPBACK_HOST.equals(host);
+	}
+
+	/**
+	 * Bounds applied to administrator-supplied invitation expiry and usage limits, so a leaked QR
+	 * can never be configured to live forever or be used an unbounded number of times.
+	 */
+	@Getter
+	@Setter
+	public static class Invitation {
+
+		private int minExpiryHours = 1;
+
+		private int defaultExpiryHours = 168;
+
+		private int maxExpiryHours = 720;
+
+		private int minMaxUses = 1;
+
+		private int defaultMaxUses = 100;
+
+		private int maxMaxUses = 500;
+
+		void validate() {
+			if (minExpiryHours < 1 || maxExpiryHours < minExpiryHours) {
+				throw new ValidationException("silingan.onboarding.invitation expiry bounds are invalid");
+			}
+			if (defaultExpiryHours < minExpiryHours || defaultExpiryHours > maxExpiryHours) {
+				throw new ValidationException("silingan.onboarding.invitation.default-expiry-hours must be within the configured bounds");
+			}
+			if (minMaxUses < 1 || maxMaxUses < minMaxUses) {
+				throw new ValidationException("silingan.onboarding.invitation usage bounds are invalid");
+			}
+			if (defaultMaxUses < minMaxUses || defaultMaxUses > maxMaxUses) {
+				throw new ValidationException("silingan.onboarding.invitation.default-max-uses must be within the configured bounds");
+			}
+		}
 	}
 }

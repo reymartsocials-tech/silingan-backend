@@ -50,9 +50,41 @@ class OnboardingPropertiesTest {
 
 	@Test
 	void rejectsConflictingQueryStringOrFragment() {
-		assertThatThrownBy(() -> propertiesWith("https://app.silingan.ph/join?communityCode=X").validateConfiguration())
+		assertThatThrownBy(() -> propertiesWith("https://app.silingan.ph/join?token=X").validateConfiguration())
 			.isInstanceOf(ValidationException.class);
 		assertThatThrownBy(() -> propertiesWith("https://app.silingan.ph/join#section").validateConfiguration())
 			.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void appliesTheApprovedInvitationDefaults() {
+		OnboardingProperties.Invitation invitation = propertiesWith("https://app.silingan.ph/join").getInvitation();
+
+		assertThat(invitation.getDefaultExpiryHours()).isEqualTo(168);
+		assertThat(invitation.getMaxExpiryHours()).isEqualTo(720);
+		assertThat(invitation.getMinExpiryHours()).isEqualTo(1);
+		assertThat(invitation.getDefaultMaxUses()).isEqualTo(100);
+		assertThat(invitation.getMaxMaxUses()).isEqualTo(500);
+		assertThat(invitation.getMinMaxUses()).isEqualTo(1);
+	}
+
+	@Test
+	void rejectsInvitationDefaultsOutsideTheirOwnBounds() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getInvitation().setDefaultExpiryHours(5_000);
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("default-expiry-hours");
+	}
+
+	@Test
+	void rejectsInvertedInvitationBounds() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getInvitation().setMaxMaxUses(0);
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("usage bounds");
 	}
 }

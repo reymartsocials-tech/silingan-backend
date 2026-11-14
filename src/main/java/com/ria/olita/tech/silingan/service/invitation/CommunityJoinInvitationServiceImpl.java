@@ -107,17 +107,24 @@ public class CommunityJoinInvitationServiceImpl implements CommunityJoinInvitati
 
 		invitationRepository.saveAndFlush(invitation);
 
-		URI joinUrl = communityJoinUrlFactory.create(rawToken);
-		byte[] png = qrCodeGenerator.generatePng(joinUrl.toString());
+		// The QR always carries the token. Whether it is a shareable web link or an app-only deep
+		// link is a configuration decision, so enabling distribution later changes nothing else.
+		URI qrPayload = communityJoinUrlFactory.createQrPayload(rawToken);
+		byte[] png = qrCodeGenerator.generatePng(qrPayload.toString());
+		String shareableJoinUrl = communityJoinUrlFactory.createShareableJoinUrl(rawToken)
+			.map(URI::toString)
+			.orElse(null);
 
 		log.info(
-			"Community join invitation {} created for community {} (expiresInHours={}, maxUses={})",
-			invitation.getId(), community.getId(), expiresInHours, maxUses
+			"Community join invitation {} created for community {} (expiresInHours={}, maxUses={}, linkDistribution={})",
+			invitation.getId(), community.getId(), expiresInHours, maxUses,
+			onboardingProperties.isLinkDistributionEnabled()
 		);
 
 		return CommunityJoinInvitationCreatedResponse.builder()
 			.invitation(toResponse(invitation, community))
-			.joinUrl(joinUrl.toString())
+			.joinUrl(shareableJoinUrl)
+			.linkDistributionEnabled(onboardingProperties.isLinkDistributionEnabled())
 			.qrCode(QrCodeImageResponse.builder()
 				.contentType(PNG_CONTENT_TYPE)
 				.fileName(toFileName(community.getName()))

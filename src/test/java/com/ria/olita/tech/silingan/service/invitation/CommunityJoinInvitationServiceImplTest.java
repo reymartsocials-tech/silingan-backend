@@ -88,13 +88,19 @@ class CommunityJoinInvitationServiceImplTest {
 	@BeforeEach
 	void setUp() {
 		tokenHasher = new InvitationTokenHasher();
+		service = serviceWithLinkDistribution(false);
 
+		when(qrCodeGenerator.generatePng(anyString())).thenReturn(PNG);
+	}
+
+	private CommunityJoinInvitationServiceImpl serviceWithLinkDistribution(boolean enabled) {
 		OnboardingProperties properties = new OnboardingProperties();
 		properties.setJoinBaseUrl("https://app.silingan.ph/join");
+		properties.getInvitation().setLinkDistributionEnabled(enabled);
 
 		Clock clock = Clock.fixed(NOW.atZone(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
 
-		service = new CommunityJoinInvitationServiceImpl(
+		return new CommunityJoinInvitationServiceImpl(
 			invitationRepository,
 			communityRepository,
 			userRepository,
@@ -107,8 +113,6 @@ class CommunityJoinInvitationServiceImplTest {
 			properties,
 			clock
 		);
-
-		when(qrCodeGenerator.generatePng(anyString())).thenReturn(PNG);
 	}
 
 	private static Community activeCommunity() {
@@ -170,29 +174,26 @@ class CommunityJoinInvitationServiceImplTest {
 	}
 
 	@Test
-	void createStoresOnlyTheTokenHashAndReturnsTheRawTokenOnce() {
+	void createStoresOnlyTheTokenHashOfTheTokenItJustIssued() {
 		givenManageableCommunity();
 
-		CommunityJoinInvitationCreatedResponse response =
-			service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
+		service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
 
-		String rawToken = response.joinUrl().substring(response.joinUrl().indexOf("token=") + "token=".length());
+		String rawToken = capturedRawToken();
 		CommunityJoinInvitation saved = captureSaved();
 
 		assertThat(saved.getTokenHash())
 			.isEqualTo(tokenHasher.hash(rawToken))
 			.doesNotContain(rawToken);
-		assertThat(response.joinUrl()).startsWith("https://app.silingan.ph/join?token=");
 	}
 
 	@Test
-	void createEncodesTheJoinUrlInTheQrImage() {
+	void createReturnsTheQrImageInline() {
 		givenManageableCommunity();
 
 		CommunityJoinInvitationCreatedResponse response =
 			service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
 
-		verify(qrCodeGenerator).generatePng(response.joinUrl());
 		assertThat(response.qrCode().contentType()).isEqualTo("image/png");
 		assertThat(response.qrCode().base64()).isEqualTo(Base64.getEncoder().encodeToString(PNG));
 		assertThat(response.qrCode().fileName()).isEqualTo("silingan-maple-residences-join.png");
@@ -206,7 +207,67 @@ class CommunityJoinInvitationServiceImplTest {
 			service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
 
 		assertThat(response.invitation().toString()).doesNotContain(COMMUNITY_CODE);
-		assertThat(response.joinUrl()).doesNotContain(COMMUNITY_CODE);
+		assertThat(capturedQrPayload()).doesNotContain(COMMUNITY_CODE);
+	}
+
+	// ---------- link distribution toggle ----------
+
+	@Test
+	void theMvpQrIsInAppOnlyAndCarriesNoShareableLink() {
+		// Scanning with a generic camera app cannot open a silingan:// URI, so the invitation is
+		// only actionable inside the installed SILINGAN app.
+		givenManageableCommunity();
+
+		CommunityJoinInvitationCreatedResponse response =
+			service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
+
+		assertThat(response.joinUrl()).isNull();
+		assertThat(response.linkDistributionEnabled()).isFalse();
+		assertThat(capturedQrPayload()).startsWith("silingan://join?token=");
+	}
+
+	@Test
+	void enablingLinkDistributionSwitchesTheQrToTheShareableWebLink() {
+		service = serviceWithLinkDistribution(true);
+		givenManageableCommunity();
+
+		CommunityJoinInvitationCreatedResponse response =
+			service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
+
+		assertThat(response.linkDistributionEnabled()).isTrue();
+		assertThat(response.joinUrl()).startsWith("https://app.silingan.ph/join?token=");
+		assertThat(capturedQrPayload()).isEqualTo(response.joinUrl());
+	}
+
+	@Test
+	void theToggleChangesOnlyTheJoinTargetNotTheInvitationItself() {
+		// Turning distribution on later must not alter the stored invitation lifecycle.
+		service = serviceWithLinkDistribution(true);
+		givenManageableCommunity();
+
+		service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
+
+		CommunityJoinInvitation saved = captureSaved();
+		assertThat(saved.getMaxUses()).isEqualTo(100);
+		assertThat(saved.getExpiresAt()).isEqualTo(NOW.plusHours(168));
+		assertThat(saved.getStatus()).isEqualTo(CommunityJoinInvitationStatus.ACTIVE);
+		assertThat(saved.getTokenHash()).isEqualTo(tokenHasher.hash(capturedRawToken()));
+	}
+
+	@Test
+	void bothToggleStatesTransportTheTokenIdentically() {
+		givenManageableCommunity();
+		service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
+		String inAppToken = capturedRawToken();
+
+		org.mockito.Mockito.reset(qrCodeGenerator);
+		when(qrCodeGenerator.generatePng(anyString())).thenReturn(PNG);
+		service = serviceWithLinkDistribution(true);
+		service.create(COMMUNITY_ID, CreateCommunityJoinInvitationRequest.builder().build());
+		String webToken = capturedRawToken();
+
+		assertThat(inAppToken).matches("^[A-Za-z0-9_-]{43}$");
+		assertThat(webToken).matches("^[A-Za-z0-9_-]{43}$");
 	}
 
 	@Test
@@ -498,6 +559,18 @@ class CommunityJoinInvitationServiceImplTest {
 	private void doThrowOnScopeCheck() {
 		org.mockito.Mockito.doThrow(new ForbiddenException("Access denied"))
 			.when(communityScopeGuard).assertAccess(any(UUID.class));
+	}
+
+	/** The QR payload is the only place the issued raw token is observable. */
+	private String capturedQrPayload() {
+		ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+		verify(qrCodeGenerator).generatePng(captor.capture());
+		return captor.getValue();
+	}
+
+	private String capturedRawToken() {
+		String payload = capturedQrPayload();
+		return payload.substring(payload.indexOf("token=") + "token=".length());
 	}
 
 	private CommunityJoinInvitation captureSaved() {

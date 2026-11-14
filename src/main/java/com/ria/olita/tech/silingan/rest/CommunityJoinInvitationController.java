@@ -51,11 +51,15 @@ public class CommunityJoinInvitationController {
 	@RequiresPermission(domain = Domain.RESIDENT, action = Action.MANAGE)
 	@Operation(
 		summary = "Create a resident join invitation",
-		description = "Generates a secure, expiring, revocable invitation token and returns the join URL "
-			+ "and QR image exactly once. Only the token hash is stored, so the join URL cannot be "
-			+ "retrieved again: the administrator must download or share it immediately. To replace a lost "
-			+ "invitation, revoke it and create a new one. The community is taken from the path and the "
-			+ "creator from the authenticated principal."
+		description = "Generates a secure, expiring, revocable invitation token and returns the QR image "
+			+ "exactly once. Only the token hash is stored, so the join target cannot be retrieved again: "
+			+ "the administrator must download or share it immediately. To replace a lost invitation, "
+			+ "revoke it and create a new one. The community is taken from the path and the creator from "
+			+ "the authenticated principal.\n\n"
+			+ "While `silingan.onboarding.invitation.link-distribution-enabled` is false the QR encodes a "
+			+ "SILINGAN app deep link and `joinUrl` is null, so the invitation can only be used by scanning "
+			+ "or uploading the QR inside the installed app. Enabling the property makes the QR encode the "
+			+ "web join URL and returns the shareable link."
 	)
 	public ResponseEntity<ApiResponse<CommunityJoinInvitationCreatedResponse>> createInvitation(
 		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000")

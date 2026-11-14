@@ -16,6 +16,13 @@ class OnboardingPropertiesTest {
 		return properties;
 	}
 
+	/** The web join URL is only enforced once links may actually be distributed. */
+	private static OnboardingProperties distributingPropertiesWith(String joinBaseUrl) {
+		OnboardingProperties properties = propertiesWith(joinBaseUrl);
+		properties.getInvitation().setLinkDistributionEnabled(true);
+		return properties;
+	}
+
 	@Test
 	void acceptsHttpsJoinBaseUrl() {
 		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
@@ -25,34 +32,87 @@ class OnboardingPropertiesTest {
 	}
 
 	@Test
+	void linkDistributionIsDisabledByDefaultForInAppOnlyOnboarding() {
+		assertThat(propertiesWith("https://app.silingan.ph/join").isLinkDistributionEnabled()).isFalse();
+	}
+
+	@Test
+	void defaultsToTheSilinganAppDeepLink() {
+		assertThat(propertiesWith("https://app.silingan.ph/join").appJoinUri())
+			.hasToString("silingan://join");
+	}
+
+	@Test
+	void rejectsAnAppJoinUriThatAGenericBrowserCouldOpen() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.setAppJoinUri("https://app.silingan.ph/join");
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("not http or https");
+	}
+
+	@Test
+	void rejectsAnInvalidAppJoinUri() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+
+		properties.setAppJoinUri("   ");
+		assertThatThrownBy(properties::validateConfiguration).isInstanceOf(ValidationException.class);
+
+		properties.setAppJoinUri("join");
+		assertThatThrownBy(properties::validateConfiguration).isInstanceOf(ValidationException.class);
+
+		properties.setAppJoinUri("silingan:join");
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("hierarchical");
+
+		properties.setAppJoinUri("silingan://join?token=X");
+		assertThatThrownBy(properties::validateConfiguration).isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void theWebJoinUrlIsOnlyValidatedOnceLinksMayBeDistributed() {
+		// The MVP never builds a web link, so a placeholder base URL must not block startup.
+		OnboardingProperties properties = propertiesWith("http://not-yet-configured.example.com/join");
+
+		assertThatCode(properties::validateConfiguration).doesNotThrowAnyException();
+
+		properties.getInvitation().setLinkDistributionEnabled(true);
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("HTTPS");
+	}
+
+	@Test
 	void allowsPlainHttpOnlyForLocalDevelopment() {
-		assertThatCode(() -> propertiesWith("http://localhost:3000/join").validateConfiguration())
+		assertThatCode(() -> distributingPropertiesWith("http://localhost:3000/join").validateConfiguration())
 			.doesNotThrowAnyException();
 
-		assertThatThrownBy(() -> propertiesWith("http://app.silingan.ph/join").validateConfiguration())
+		assertThatThrownBy(() -> distributingPropertiesWith("http://app.silingan.ph/join").validateConfiguration())
 			.isInstanceOf(ValidationException.class)
 			.hasMessageContaining("HTTPS");
 	}
 
 	@Test
 	void rejectsBlankConfiguration() {
-		assertThatThrownBy(() -> propertiesWith("   ").validateConfiguration())
+		assertThatThrownBy(() -> distributingPropertiesWith("   ").validateConfiguration())
 			.isInstanceOf(ValidationException.class);
-		assertThatThrownBy(() -> propertiesWith(null).validateConfiguration())
+		assertThatThrownBy(() -> distributingPropertiesWith(null).validateConfiguration())
 			.isInstanceOf(ValidationException.class);
 	}
 
 	@Test
 	void rejectsRelativeOrHostlessUrls() {
-		assertThatThrownBy(() -> propertiesWith("/join").validateConfiguration())
+		assertThatThrownBy(() -> distributingPropertiesWith("/join").validateConfiguration())
 			.isInstanceOf(ValidationException.class);
 	}
 
 	@Test
 	void rejectsConflictingQueryStringOrFragment() {
-		assertThatThrownBy(() -> propertiesWith("https://app.silingan.ph/join?token=X").validateConfiguration())
+		assertThatThrownBy(() -> distributingPropertiesWith("https://app.silingan.ph/join?token=X").validateConfiguration())
 			.isInstanceOf(ValidationException.class);
-		assertThatThrownBy(() -> propertiesWith("https://app.silingan.ph/join#section").validateConfiguration())
+		assertThatThrownBy(() -> distributingPropertiesWith("https://app.silingan.ph/join#section").validateConfiguration())
 			.isInstanceOf(ValidationException.class);
 	}
 

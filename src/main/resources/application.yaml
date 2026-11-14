@@ -113,8 +113,14 @@ otp:
 silingan:
   onboarding:
     join-base-url: ${SILINGAN_JOIN_BASE_URL:https://app.silingan.ph/join}
+    # Deep link of the installed SILINGAN app. A non-web scheme keeps a scanned join QR
+    # unusable outside the app while link distribution is disabled.
+    app-join-uri: ${SILINGAN_APP_JOIN_URI:silingan://join}
     # Safe bounds for administrator-chosen join invitation lifetime and usage limits.
     invitation:
+      # Off for the MVP: onboarding is in-app QR scanning only. Turning this on starts
+      # distributing shareable web join links; nothing else about invitations changes.
+      link-distribution-enabled: ${SILINGAN_INVITATION_LINK_DISTRIBUTION_ENABLED:false}
       min-expiry-hours: ${SILINGAN_INVITATION_MIN_EXPIRY_HOURS:1}
       default-expiry-hours: ${SILINGAN_INVITATION_DEFAULT_EXPIRY_HOURS:168}
       max-expiry-hours: ${SILINGAN_INVITATION_MAX_EXPIRY_HOURS:720}

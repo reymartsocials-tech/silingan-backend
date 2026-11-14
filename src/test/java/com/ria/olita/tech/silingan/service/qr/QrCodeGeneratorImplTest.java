@@ -32,24 +32,24 @@ class QrCodeGeneratorImplTest {
 
 	@Test
 	void generatesNonEmptyPngWithValidFileHeaders() {
-		byte[] png = generator.generatePng("https://app.silingan.ph/join?communityCode=MAPLERES-2026");
+		byte[] png = generator.generatePng("silingan://join?token=Y8hVfM3wQk7xP2nR6cT9");
 
 		assertThat(png).isNotEmpty();
 		assertThat(Arrays.copyOf(png, PNG_MAGIC.length)).isEqualTo(PNG_MAGIC);
 	}
 
 	@Test
-	void encodedContentDecodesBackToTheJoinUrl() throws Exception {
-		String joinUrl = "https://app.silingan.ph/join?communityCode=MAPLERES-2026";
+	void encodedContentDecodesBackToTheJoinTarget() throws Exception {
+		String joinTarget = "https://app.silingan.ph/join?token=Y8hVfM3wQk7xP2nR6cT9";
 
-		assertThat(decode(generator.generatePng(joinUrl))).isEqualTo(joinUrl);
+		assertThat(decode(generator.generatePng(joinTarget))).isEqualTo(joinTarget);
 	}
 
 	@Test
-	void handlesCodesRequiringUrlEncoding() throws Exception {
-		String joinUrl = "https://app.silingan.ph/join?communityCode=A%20B%26c%3Dd";
+	void handlesTokensRequiringUrlEncoding() throws Exception {
+		String joinTarget = "https://app.silingan.ph/join?token=A%20B%26c%3Dd";
 
-		assertThat(decode(generator.generatePng(joinUrl))).isEqualTo(joinUrl);
+		assertThat(decode(generator.generatePng(joinTarget))).isEqualTo(joinTarget);
 	}
 
 	@Test

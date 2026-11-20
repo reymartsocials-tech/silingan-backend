@@ -12,11 +12,14 @@ import com.ria.olita.tech.silingan.entity.User;
 import com.ria.olita.tech.silingan.entity.UserCommunity;
 import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.exception.ForbiddenException;
+import com.ria.olita.tech.silingan.exception.ValidationException;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
 import com.ria.olita.tech.silingan.service.CommunityService;
 import com.ria.olita.tech.silingan.service.KeycloakService;
 import com.ria.olita.tech.silingan.service.UserService;
+import com.ria.olita.tech.silingan.service.invitation.CommunityJoinInvitationResolution;
+import com.ria.olita.tech.silingan.service.invitation.CommunityJoinInvitationService;
 import com.ria.olita.tech.silingan.service.otp.RegistrationOtpProofService;
 import com.ria.olita.tech.silingan.util.ContactNormalizer;
 
@@ -34,6 +37,7 @@ public class UserServiceImpl implements UserService {
 	private final CommunityRepository communityRepository;
 	private final RegistrationOtpProofService registrationOtpProofService;
 	private final CommunityService communityService;
+	private final CommunityJoinInvitationService communityJoinInvitationService;
 
 	@Override
 	public void createUser(CreateUserRequest request) {
@@ -71,7 +75,10 @@ public class UserServiceImpl implements UserService {
 		// Keycloak account behind.
 		assertContactDetailsAreUnique(email, mobileNumber);
 
-		CommunityResponse community = communityService.getByCode(request.communityCode());
+		CommunityJoinInvitationResolution invitationResolution = resolveInvitation(request);
+		CommunityResponse community = invitationResolution != null
+			? invitationResolution.community()
+			: communityService.getByCode(request.communityCode());
 		String keycloakUserId = keycloakService.createUser(request, community.id());
 		log.info("User saved to kc with ID: {}", keycloakUserId);
 		Community communityEntity = communityRepository.findById(community.id()).get();
@@ -104,6 +111,12 @@ public class UserServiceImpl implements UserService {
 		}
 		log.info("User saved to database with ID: {}", user.getId());
 
+		if (invitationResolution != null) {
+			// Recorded only after the membership is persisted, inside the same transaction, so a
+			// failed registration never burns a use and a concurrent exhaustion rolls both back.
+			communityJoinInvitationService.consumeUse(invitationResolution.invitationId());
+		}
+
 		return CreatedUserResponse.builder()
 			.id(user.getId())
 			.keycloakUserId(user.getKeycloakUserId())
@@ -116,8 +129,32 @@ public class UserServiceImpl implements UserService {
 			.build();
 	}
 
-	private void assertContactDetailsAreUnique(String email, String mobileNumber) {
-		if (email != null && userRepository.existsByEmailAndDeletedFalse(email)) {
+	/**
+	 * Resolves the community when the resident arrived through a scanned join QR or link.
+	 *
+	 * <p>Returns {@code null} for manual community-code onboarding, which keeps the existing path
+	 * untouched. The token is re-validated here even though the public preview already checked it,
+	 * because the preview is never authoritative.
+	 */
+	private CommunityJoinInvitationResolution resolveInvitation(CreateUserRequest request) {
+		String token = request.invitationToken();
+		boolean hasToken = token != null && !token.isBlank();
+		boolean hasCode = request.communityCode() != null && !request.communityCode().isBlank();
+
+		if (hasToken && hasCode) {
+			throw new ValidationException("Provide either a community code or an invitation token, but not both");
+		}
+		if (!hasToken && !hasCode) {
+			throw new ValidationException("A community code or an invitation token is required");
+		}
+		if (!hasToken) {
+			return null;
+		}
+
+		return communityJoinInvitationService.resolveForRegistration(token);
+	}
+
+	private void assertContactDetailsAreUnique(String email, String mobileNumber) {		if (email != null && userRepository.existsByEmailAndDeletedFalse(email)) {
 			throw new ConflictException("Email is already registered");
 		}
 		if (mobileNumber != null && userRepository.existsByMobileNumberAndDeletedFalse(mobileNumber)) {

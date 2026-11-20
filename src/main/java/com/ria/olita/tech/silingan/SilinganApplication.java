@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import com.ria.olita.tech.silingan.config.OnboardingProperties;
 import com.ria.olita.tech.silingan.config.OtpProperties;
 import com.ria.olita.tech.silingan.config.SmsProperties;
 import com.ria.olita.tech.silingan.config.JwtProperties;
@@ -15,7 +16,7 @@ import com.ria.olita.tech.silingan.config.JwtProperties;
 @EnableJpaAuditing
 @EnableAsync
 @EnableScheduling
-@EnableConfigurationProperties({OtpProperties.class, SmsProperties.class, JwtProperties.class})
+@EnableConfigurationProperties({OtpProperties.class, SmsProperties.class, JwtProperties.class, OnboardingProperties.class})
 public class SilinganApplication {
 
 

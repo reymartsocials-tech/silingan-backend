@@ -16,6 +16,7 @@
 
 	<properties>
 		<java.version>21</java.version>
+		<zxing.version>3.5.3</zxing.version>
 	</properties>
 	<dependencies>
 
@@ -124,6 +125,18 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-cache</artifactId>
+		</dependency>
+
+		<!-- ZXing: community join QR code generation (see CommunityJoinQrService) -->
+		<dependency>
+			<groupId>com.google.zxing</groupId>
+			<artifactId>core</artifactId>
+			<version>${zxing.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.zxing</groupId>
+			<artifactId>javase</artifactId>
+			<version>${zxing.version}</version>
 		</dependency>
 
 		<!-- Logstash Logback Encoder for JSON structured logging (ELK/Loki integration) -->

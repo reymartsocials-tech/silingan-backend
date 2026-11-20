@@ -1,10 +1,12 @@
 package com.ria.olita.tech.silingan.dto.req;
 
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Builder;
 
@@ -27,8 +29,14 @@ public record CreateUserRequest(
 	@Schema(example = "true", defaultValue = "true") Boolean enabled,
 	@Schema(example = "true", defaultValue = "false") Boolean emailVerified,
 	@Schema(example = "RESIDENT") SilinganRealmRole communityRole,
-	@NotNull
-	@Schema(example = "UDBH-123") String communityCode,
+	@Schema(
+		example = "UDBH-123",
+		description = "Manual community code. Supply either this or invitationToken, never both."
+	) String communityCode,
+	@Schema(
+		description = "Raw token from a scanned community join QR or link. The community is resolved "
+			+ "server-side; supply either this or communityCode, never both."
+	) String invitationToken,
 	@Schema(example = "{\"street\":\"123 Main St\",\"barangay\":\"Poblacion\",\"city\":\"Makati\",\"province\":\"Metro Manila\",\"region\":13,\"postalCode\":\"1200\",\"country\":\"Philippines\"}")
 	AddressRequest address
 ) {
@@ -46,6 +54,7 @@ public record CreateUserRequest(
 			this.emailVerified,
 			communityRole,
 			this.communityCode,
+			this.invitationToken,
 			this.address
 		);
 	}
@@ -62,6 +71,7 @@ public record CreateUserRequest(
 			this.emailVerified,
 			this.communityRole,
 			this.communityCode,
+			this.invitationToken,
 			this.address
 		);
 	}
@@ -78,8 +88,23 @@ public record CreateUserRequest(
 			this.emailVerified,
 			this.communityRole,
 			this.communityCode,
+			this.invitationToken,
 			this.address
 		);
+	}
+
+	/**
+	 * Exactly one community-selection mechanism must be supplied: the manual community code used by
+	 * existing clients, or an invitation token from a scanned join QR.
+	 */
+	@AssertTrue(message = "Provide either a community code or an invitation token, but not both")
+	@JsonIgnore
+	@Schema(hidden = true)
+	public boolean isCommunitySelectionValid() {
+		boolean hasCode = communityCode != null && !communityCode.isBlank();
+		boolean hasToken = invitationToken != null && !invitationToken.isBlank();
+
+		return hasCode ^ hasToken;
 	}
 
 	public CreateUserRequest {

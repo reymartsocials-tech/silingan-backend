@@ -1,11 +1,14 @@
 package com.ria.olita.tech.silingan.config;
 
+import java.awt.Color;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.regex.Pattern;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 import com.ria.olita.tech.silingan.exception.ValidationException;
 
 import jakarta.annotation.PostConstruct;
@@ -54,6 +57,11 @@ public class OnboardingProperties {
 	private final Invitation invitation = new Invitation();
 
 	/**
+	 * Presentation of the generated join QR image. Visual only: nothing here reaches the payload.
+	 */
+	private final Qr qr = new Qr();
+
+	/**
 	 * Parsed and validated join base URL.
 	 */
 	public URI joinBaseUri() {
@@ -85,6 +93,7 @@ public class OnboardingProperties {
 	void validateConfiguration() {
 		validatedAppUri();
 		invitation.validate();
+		qr.validate();
 
 		// The web join URL only has to be usable once links may actually be distributed.
 		if (invitation.isLinkDistributionEnabled()) {
@@ -201,6 +210,160 @@ public class OnboardingProperties {
 			if (defaultMaxUses < minMaxUses || defaultMaxUses > maxMaxUses) {
 				throw new ValidationException("silingan.onboarding.invitation.default-max-uses must be within the configured bounds");
 			}
+		}
+	}
+
+	/**
+	 * Branding of the join QR image (SILINGAN "Dark Background" card).
+	 *
+	 * <p>Presentation only: none of these values is ever encoded into the QR payload, and none of
+	 * them is reachable from client input. Scanning reliability constrains the bounds enforced in
+	 * {@link #validate()}: the quiet zone may not drop below four modules and the centre logo may
+	 * not cover more than {@value #CENTER_LOGO_MAX_RATIO_LIMIT} of the QR, because the logo already
+	 * consumes part of the error-correction budget.
+	 */
+	@Getter
+	@Setter
+	public static class Qr {
+
+		/** Absolute ceiling for the centre logo, beyond which decoding stops being dependable. */
+		public static final double CENTER_LOGO_MAX_RATIO_LIMIT = 0.20;
+
+		/** QR specification minimum quiet zone. */
+		public static final int MIN_MARGIN_MODULES = 4;
+
+		private static final Pattern HEX_COLOR = Pattern.compile("^#[0-9a-fA-F]{6}$");
+
+		private int canvasWidth = 640;
+
+		private int canvasHeight = 780;
+
+		/** Maximum edge of the QR panel. The matrix is scaled to whole modules inside it. */
+		private int qrSize = 544;
+
+		private int topPadding = 40;
+
+		private int sidePadding = 48;
+
+		/** Vertical gap between the QR panel and the SILINGAN wordmark. */
+		private int brandingGap = 26;
+
+		/** Vertical gap between the wordmark and the tagline. */
+		private int taglineGap = 10;
+
+		private int bottomPadding = 36;
+
+		private double centerLogoMaxRatio = 0.18;
+
+		/** Padding between the white centre backing plate and the logo drawn inside it. */
+		private int centerLogoPadding = 12;
+
+		private String errorCorrection = "H";
+
+		private int marginModules = MIN_MARGIN_MODULES;
+
+		/** Dark SILINGAN card background. */
+		private String backgroundColor = "#14332C";
+
+		/**
+		 * Modules are drawn dark on a white panel. ZXing and every tested camera decode this
+		 * reliably; a fully inverted matrix does not (see docs/COMMUNITY_JOIN_QR.md).
+		 */
+		private String qrForegroundColor = "#000000";
+
+		private String qrBackgroundColor = "#FFFFFF";
+
+		private String wordmarkColor = "#FFFFFF";
+
+		private String taglineColor = "#E8F3F1";
+
+		private int wordmarkFontSize = 40;
+
+		private int taglineFontSize = 22;
+
+		private String logoResource = "classpath:branding/silingan-icon.png";
+
+		/** Approved tagline. Fixed branding copy: never administrator- or request-supplied. */
+		private String tagline = "Your community, in one place.";
+
+		public Color backgroundColorValue() {
+			return parseColor("background-color", backgroundColor);
+		}
+
+		public Color qrForegroundColorValue() {
+			return parseColor("qr-foreground-color", qrForegroundColor);
+		}
+
+		public Color qrBackgroundColorValue() {
+			return parseColor("qr-background-color", qrBackgroundColor);
+		}
+
+		public Color wordmarkColorValue() {
+			return parseColor("wordmark-color", wordmarkColor);
+		}
+
+		public Color taglineColorValue() {
+			return parseColor("tagline-color", taglineColor);
+		}
+
+		public ErrorCorrectionLevel errorCorrectionLevel() {
+			try {
+				return ErrorCorrectionLevel.valueOf(errorCorrection == null ? "" : errorCorrection.trim().toUpperCase());
+			} catch (IllegalArgumentException ex) {
+				throw new ValidationException("silingan.onboarding.qr.error-correction must be one of L, M, Q, H");
+			}
+		}
+
+		void validate() {
+			if (canvasWidth < 1 || canvasHeight < 1 || qrSize < 1) {
+				throw new ValidationException("silingan.onboarding.qr dimensions must be positive");
+			}
+			if (topPadding < 0 || sidePadding < 0 || bottomPadding < 0 || brandingGap < 0 || taglineGap < 0) {
+				throw new ValidationException("silingan.onboarding.qr paddings and gaps must not be negative");
+			}
+			if (qrSize + 2 * sidePadding > canvasWidth) {
+				throw new ValidationException("silingan.onboarding.qr.qr-size does not fit the canvas width with side padding");
+			}
+			if (topPadding + qrSize + brandingGap + wordmarkFontSize + taglineGap + taglineFontSize + bottomPadding
+				> canvasHeight) {
+				throw new ValidationException("silingan.onboarding.qr composition does not fit the canvas height");
+			}
+			if (centerLogoMaxRatio <= 0 || centerLogoMaxRatio > CENTER_LOGO_MAX_RATIO_LIMIT) {
+				throw new ValidationException(
+					"silingan.onboarding.qr.center-logo-max-ratio must be greater than 0 and at most "
+						+ CENTER_LOGO_MAX_RATIO_LIMIT
+				);
+			}
+			if (centerLogoPadding < 0 || centerLogoPadding * 2 >= qrSize * centerLogoMaxRatio) {
+				throw new ValidationException("silingan.onboarding.qr.center-logo-padding leaves no room for the logo");
+			}
+			if (marginModules < MIN_MARGIN_MODULES) {
+				throw new ValidationException(
+					"silingan.onboarding.qr.margin-modules must keep at least " + MIN_MARGIN_MODULES + " quiet-zone modules"
+				);
+			}
+			if (wordmarkFontSize < 1 || taglineFontSize < 1) {
+				throw new ValidationException("silingan.onboarding.qr font sizes must be positive");
+			}
+			if (logoResource == null || logoResource.isBlank()) {
+				throw new ValidationException("silingan.onboarding.qr.logo-resource must be configured");
+			}
+			if (tagline == null || tagline.isBlank()) {
+				throw new ValidationException("silingan.onboarding.qr.tagline must not be blank");
+			}
+			errorCorrectionLevel();
+			backgroundColorValue();
+			qrForegroundColorValue();
+			qrBackgroundColorValue();
+			wordmarkColorValue();
+			taglineColorValue();
+		}
+
+		private Color parseColor(String property, String value) {
+			if (value == null || !HEX_COLOR.matcher(value.trim()).matches()) {
+				throw new ValidationException("silingan.onboarding.qr." + property + " must be a #RRGGBB colour");
+			}
+			return new Color(Integer.parseInt(value.trim().substring(1), 16));
 		}
 	}
 }

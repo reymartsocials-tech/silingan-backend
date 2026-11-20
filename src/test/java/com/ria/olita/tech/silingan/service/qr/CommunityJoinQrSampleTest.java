@@ -2,21 +2,13 @@ package com.ria.olita.tech.silingan.service.qr;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import javax.imageio.ImageIO;
-
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import com.google.zxing.BinaryBitmap;
-import com.google.zxing.MultiFormatReader;
-import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
-import com.google.zxing.common.HybridBinarizer;
 import com.ria.olita.tech.silingan.config.OnboardingProperties;
 
 /**
@@ -35,7 +27,7 @@ class CommunityJoinQrSampleTest {
 
 	private static final Path SAMPLE_DIR = Path.of("target", "qr-samples");
 
-	private final QrCodeGenerator generator = new QrCodeGeneratorImpl();
+	private final QrCodeGenerator generator = JoinQrTestFixtures.generator();
 
 	@BeforeAll
 	static void createSampleDirectory() throws Exception {
@@ -43,17 +35,13 @@ class CommunityJoinQrSampleTest {
 	}
 
 	private static CommunityJoinUrlFactory factory(boolean linkDistributionEnabled) {
-		OnboardingProperties properties = new OnboardingProperties();
-		properties.setJoinBaseUrl("https://app.silingan.ph/join");
+		OnboardingProperties properties = JoinQrTestFixtures.properties();
 		properties.getInvitation().setLinkDistributionEnabled(linkDistributionEnabled);
 		return new CommunityJoinUrlFactory(properties);
 	}
 
 	private static String decode(byte[] png) throws Exception {
-		BufferedImage image = ImageIO.read(new ByteArrayInputStream(png));
-		BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(new BufferedImageLuminanceSource(image)));
-		return new MultiFormatReader().decode(bitmap)
-			.getText();
+		return JoinQrTestFixtures.decode(png);
 	}
 
 	private String writeSample(String fileName, URI payload) throws Exception {

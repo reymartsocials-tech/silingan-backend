@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 import com.ria.olita.tech.silingan.exception.ValidationException;
 
 class OnboardingPropertiesTest {
@@ -146,5 +147,102 @@ class OnboardingPropertiesTest {
 		assertThatThrownBy(properties::validateConfiguration)
 			.isInstanceOf(ValidationException.class)
 			.hasMessageContaining("usage bounds");
+	}
+	@Test
+	void acceptsTheApprovedBrandedQrDefaults() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+
+		assertThatCode(properties::validateConfiguration).doesNotThrowAnyException();
+
+		OnboardingProperties.Qr qr = properties.getQr();
+		assertThat(qr.getCanvasWidth()).isEqualTo(640);
+		assertThat(qr.getCanvasHeight()).isEqualTo(780);
+		assertThat(qr.getQrSize()).isEqualTo(544);
+		assertThat(qr.getTagline()).isEqualTo("Your community, in one place.");
+		assertThat(qr.errorCorrectionLevel()).isEqualTo(ErrorCorrectionLevel.H);
+		assertThat(qr.getMarginModules()).isGreaterThanOrEqualTo(OnboardingProperties.Qr.MIN_MARGIN_MODULES);
+		assertThat(qr.getCenterLogoMaxRatio())
+			.isLessThanOrEqualTo(OnboardingProperties.Qr.CENTER_LOGO_MAX_RATIO_LIMIT);
+	}
+
+	@Test
+	void rejectsAQrLargerThanItsCanvas() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getQr().setQrSize(640);
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("qr-size");
+	}
+
+	@Test
+	void rejectsACompositionTallerThanItsCanvas() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getQr().setCanvasHeight(600);
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("canvas height");
+	}
+
+	/** The centre mark spends error-correction budget, so its ceiling is not negotiable. */
+	@Test
+	void rejectsACentreLogoLargerThanTheApprovedCeiling() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getQr().setCenterLogoMaxRatio(0.3);
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("center-logo-max-ratio");
+	}
+
+	@Test
+	void rejectsAQuietZoneBelowTheQrSpecificationMinimum() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getQr().setMarginModules(2);
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("margin-modules");
+	}
+
+	@Test
+	void rejectsAnUnsupportedErrorCorrectionLevel() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getQr().setErrorCorrection("X");
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("error-correction");
+	}
+
+	@Test
+	void rejectsAColourThatCannotBeParsed() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getQr().setBackgroundColor("dark-green");
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("background-color");
+	}
+
+	@Test
+	void rejectsABlankTagline() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getQr().setTagline("  ");
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("tagline");
+	}
+
+	@Test
+	void rejectsABlankBrandingResource() {
+		OnboardingProperties properties = propertiesWith("https://app.silingan.ph/join");
+		properties.getQr().setLogoResource("");
+
+		assertThatThrownBy(properties::validateConfiguration)
+			.isInstanceOf(ValidationException.class)
+			.hasMessageContaining("logo-resource");
 	}
 }

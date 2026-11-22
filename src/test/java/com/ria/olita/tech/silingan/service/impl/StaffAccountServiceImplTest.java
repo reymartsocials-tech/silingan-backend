@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,6 +27,9 @@ import com.ria.olita.tech.silingan.entity.UserStatus;
 import com.ria.olita.tech.silingan.entity.rbac.StaffRoleCode;
 import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.exception.NotFoundException;
+import com.ria.olita.tech.silingan.entity.CommunityIssueRouting;
+import com.ria.olita.tech.silingan.entity.IssueCategory;
+import com.ria.olita.tech.silingan.repository.CommunityIssueRoutingRepository;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
@@ -46,6 +50,9 @@ class StaffAccountServiceImplTest {
 
 	@Mock
 	private KeycloakService keycloakService;
+
+	@Mock
+	private CommunityIssueRoutingRepository communityIssueRoutingRepository;
 
 	@InjectMocks
 	private StaffAccountServiceImpl staffAccountService;
@@ -220,6 +227,25 @@ class StaffAccountServiceImplTest {
 		assertNotNull(response);
 		assertEquals(UserStatus.INACTIVE, response.status());
 		verify(userRepository, times(1)).saveAndFlush(any(User.class));
+	}
+
+	@Test
+	@DisplayName("Should reject deactivation while staff still owns active category routes")
+	void testDeactivateStaff_BlockedByActiveRouting() {
+		when(userRepository.findById(staffUserId)).thenReturn(Optional.of(staffUser));
+		when(userCommunityRepository.findByUserIdAndCommunityId(staffUserId, communityId))
+			.thenReturn(Optional.of(userCommunity));
+		CommunityIssueRouting parkingRoute = CommunityIssueRouting.builder()
+			.category(IssueCategory.builder().name("Parking").build())
+			.build();
+		when(communityIssueRoutingRepository.findActiveByStaffUserId(staffUserId)).thenReturn(List.of(parkingRoute));
+
+		ConflictException ex = assertThrows(ConflictException.class,
+			() -> staffAccountService.deactivateStaff(communityId, staffUserId));
+
+		assertTrue(ex.getMessage().contains("Parking"));
+		assertEquals(UserStatus.ACTIVE, staffUser.getStatus());
+		verify(userRepository, never()).saveAndFlush(any(User.class));
 	}
 
 	@Test

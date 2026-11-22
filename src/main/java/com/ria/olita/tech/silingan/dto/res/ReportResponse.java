@@ -5,8 +5,12 @@ import java.util.List;
 import java.util.UUID;
 
 import com.ria.olita.tech.silingan.entity.Issue;
+import com.ria.olita.tech.silingan.entity.IssueAssignmentStatus;
+import com.ria.olita.tech.silingan.entity.IssueRoutingDestination;
 import com.ria.olita.tech.silingan.entity.IssueStatus;
 import com.ria.olita.tech.silingan.entity.UrgencyLevel;
+import com.ria.olita.tech.silingan.entity.UserCommunity;
+import com.ria.olita.tech.silingan.service.impl.StaffRoutingEligibilityChecker;
 
 public record ReportResponse(
 	UUID id,
@@ -29,8 +33,15 @@ public record ReportResponse(
 	LocalDateTime updatedAt,
 	LocalDateTime resolvedAt,
 	String resolutionNotes,
-	List<AttachmentResponse> attachments
+	List<AttachmentResponse> attachments,
+	IssueRoutingDestination assignmentDestination,
+	IssueAssignmentStatus assignmentStatus,
+	ReportHandlerResponse handler,
+	List<ReportAssignmentActivityResponse> assignmentActivities
 ) {
+	public static final String PMO_QUEUE_DISPLAY_NAME = "PMO Review Queue";
+	public static final String PMO_QUEUE_DESIGNATION = "Waiting for staff assignment";
+
 	public static ReportResponse fromEntity(Issue issue) {
 		String reporterName = ((issue.getReporter().getFirstName() == null ? "" : issue.getReporter().getFirstName()) + " "
 			+ (issue.getReporter().getLastName() == null ? "" : issue.getReporter().getLastName())).trim();
@@ -73,7 +84,44 @@ public record ReportResponse(
 			issue.getUpdatedAt(),
 			issue.getResolvedAt(),
 			issue.getResolutionNotes(),
+			null,
+			issue.getAssignmentDestination(),
+			issue.getAssignmentStatus(),
+			buildHandler(issue),
 			null
 		);
+	}
+
+	public ReportResponse withAttachments(List<AttachmentResponse> newAttachments) {
+		return new ReportResponse(id, communityId, reporterId, reporterName, assignedToId, assignedToName, categoryId,
+			categoryName, title, description, status, urgencyLevel, customCategory, location, latitude, longitude,
+			createdAt, updatedAt, resolvedAt, resolutionNotes, newAttachments, assignmentDestination, assignmentStatus,
+			handler, assignmentActivities);
+	}
+
+	public ReportResponse withAssignmentActivities(List<ReportAssignmentActivityResponse> activities) {
+		return new ReportResponse(id, communityId, reporterId, reporterName, assignedToId, assignedToName, categoryId,
+			categoryName, title, description, status, urgencyLevel, customCategory, location, latitude, longitude,
+			createdAt, updatedAt, resolvedAt, resolutionNotes, attachments, assignmentDestination, assignmentStatus,
+			handler, activities);
+	}
+
+	private static ReportHandlerResponse buildHandler(Issue issue) {
+		if (issue.getAssignmentDestination() == IssueRoutingDestination.PMO_REVIEW_QUEUE) {
+			return new ReportHandlerResponse(PMO_QUEUE_DISPLAY_NAME, PMO_QUEUE_DESIGNATION, null, issue.getAssignedAt());
+		}
+		UserCommunity membership = issue.getAssignedStaffMembership();
+		if (issue.getAssignmentDestination() == IssueRoutingDestination.STAFF && membership != null) {
+			String profileImageUrl = membership.getProfilePictureAttachment() == null
+				? null
+				: membership.getProfilePictureAttachment().getFilePath();
+			return new ReportHandlerResponse(
+				StaffRoutingEligibilityChecker.displayName(membership.getUser()),
+				StaffRoutingEligibilityChecker.designation(membership),
+				profileImageUrl,
+				issue.getAssignedAt()
+			);
+		}
+		return null;
 	}
 }

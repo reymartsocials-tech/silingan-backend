@@ -25,11 +25,13 @@ import com.ria.olita.tech.silingan.dto.res.EffectivePermissionsResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffAccountResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffDetailsResponse;
 import com.ria.olita.tech.silingan.dto.res.StaffRoleAssignmentResponse;
+import com.ria.olita.tech.silingan.dto.res.StaffRoutingDependenciesResponse;
 import com.ria.olita.tech.silingan.entity.rbac.Action;
 import com.ria.olita.tech.silingan.entity.rbac.Domain;
 import com.ria.olita.tech.silingan.entity.rbac.StaffRoleCode;
 import com.ria.olita.tech.silingan.security.permission.RequiresPermission;
 import com.ria.olita.tech.silingan.service.CommunityRbacService;
+import com.ria.olita.tech.silingan.service.IssueRoutingService;
 import com.ria.olita.tech.silingan.service.StaffAccountService;
 import com.ria.olita.tech.silingan.service.StaffDirectoryService;
 
@@ -54,6 +56,7 @@ public class StaffManagementController {
 	private final StaffAccountService staffAccountService;
 	private final StaffDirectoryService staffDirectoryService;
 	private final CommunityRbacService communityRbacService;
+	private final IssueRoutingService issueRoutingService;
 
 	@GetMapping("/directory")
 	@RequiresPermission(domain = Domain.STAFF, action = Action.VIEW)
@@ -160,6 +163,21 @@ public class StaffManagementController {
 		@PathVariable UUID staffUserId
 	) {
 		return ResponseEntity.ok(communityRbacService.getEffectivePermissions(communityId, staffUserId));
+	}
+
+	@GetMapping("/{staffUserId}/routing-dependencies")
+	@RequiresPermission(domain = Domain.STAFF, action = Action.VIEW)
+	@Operation(
+		summary = "Get staff routing dependencies",
+		description = "Categories routed to the staff member, unresolved assigned report count, and whether deactivation is allowed."
+	)
+	public ResponseEntity<StaffRoutingDependenciesResponse> getStaffRoutingDependencies(
+		@Parameter(description = "Community ID", example = "550e8400-e29b-41d4-a716-446655440000")
+		@PathVariable UUID communityId,
+		@Parameter(description = "Staff user ID", example = "550e8400-e29b-41d4-a716-446655440001")
+		@PathVariable UUID staffUserId
+	) {
+		return ResponseEntity.ok(issueRoutingService.getStaffRoutingDependencies(communityId, staffUserId));
 	}
 
 	@PutMapping("/{staffUserId}/deactivate")

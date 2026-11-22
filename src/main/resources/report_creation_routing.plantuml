@@ -1,0 +1,119 @@
+@startuml
+
+title Resident Issue Report and Resolution Confirmation Journey
+
+autonumber
+
+actor Resident
+actor "Assigned Staff / Triage Team" as Staff
+participant "Resident / Staff App" as App
+participant "ReportController\n/api/v1/reports" as Controller
+participant "ReportServiceImpl" as ReportService
+participant "ReportAssignmentServiceImpl" as AssignmentService
+participant "StaffRoutingEligibilityChecker" as Eligibility
+participant "ReportResolutionNotificationService" as ResolutionNotifications
+participant "NotificationService" as NotificationService
+database "Application Database" as DB
+participant "After-commit listener\nReportAssignmentPushListener" as PushListener
+
+== Resident submits issue ==
+Resident -> App : Enter report details\n(community, category, title, description)
+App -> Controller : POST /api/v1/reports
+Controller -> ReportService : submitReport(request)
+
+group Report submission transaction
+    ReportService -> DB : Resolve authenticated resident,\nactive community, membership, category
+    DB --> ReportService : Validated records
+    ReportService -> DB : Create report (OPEN)
+    DB --> ReportService : Saved report
+    ReportService -> AssignmentService : assignOnSubmission(report)
+    AssignmentService -> DB : Find route by community + category
+    DB --> AssignmentService : Route or none
+
+    alt Active route to staff
+        AssignmentService -> Eligibility : Validate same-community active eligible staff
+        Eligibility -> DB : Check membership, account, role and REPORT_MANAGE
+        DB --> Eligibility : Eligible / ineligible
+    else PMO route, missing/inactive route, or ineligible staff
+        AssignmentService -> AssignmentService : Use PMO_REVIEW_QUEUE fallback
+    end
+
+    alt Staff is eligible
+        AssignmentService -> DB : Save STAFF assignment\nCATEGORY_ROUTING / ASSIGNED
+        AssignmentService -> DB : Save assignment history
+        AssignmentService -> NotificationService : Create REPORT_ASSIGNED notification
+    else Use PMO Review Queue
+        AssignmentService -> DB : Save PMO assignment\nPMO_FALLBACK / AWAITING_TRIAGE
+        AssignmentService -> DB : Save assignment history
+        AssignmentService -> DB : Find active triage recipients
+        loop Each triage recipient
+            AssignmentService -> NotificationService : Create REPORT_SUBMITTED notification
+        end
+    end
+
+    NotificationService -> DB : Persist database notification(s)
+    AssignmentService -> AssignmentService : Publish notification event(s)
+end
+
+== Submission transaction commits ==
+loop Each notification event
+    PushListener -> PushListener : After-commit hook
+    note right
+    No push provider is integrated;
+    currently logs event identifiers only.
+    end note
+end
+ReportService --> Controller : ReportResponse with handler and status
+Controller --> App : 201 Created
+App --> Resident : Show report and assigned handler / PMO queue
+
+== Staff reports work complete ==
+Staff -> App : Mark report resolved
+App -> Controller : PUT /api/v1/reports/{reportId}\nstatus = RESOLVED
+Controller -> ReportService : updateReport(reportId, request)
+group Resolution request transaction
+    ReportService -> DB : Verify report-management permission\nand save AWAITING_RESIDENT_CONFIRMATION
+    ReportService -> ResolutionNotifications : Notify reporting resident
+    ResolutionNotifications -> NotificationService : Create REPORT_RESOLVED notification
+    NotificationService -> DB : Persist notification
+    ResolutionNotifications -> ResolutionNotifications : Publish notification event
+end
+== Resolution request commits ==
+PushListener -> PushListener : Log after-commit event
+ReportService --> App : ReportResponse\nstatus = AWAITING_RESIDENT_CONFIRMATION
+App --> Resident : Show “Yes, resolved” /\n“No, still an issue”
+
+== Resident decides ==
+Resident -> App : Choose resolution decision
+App -> Controller : POST /api/v1/reports/{reportId}/resolution-response\nCONFIRMED_RESOLVED or STILL_AN_ISSUE
+Controller -> ReportService : respondToResolution(reportId, request)
+group Resident decision transaction
+    ReportService -> DB : Lock report; verify reporter ownership\nand awaiting-confirmation status
+    DB --> ReportService : Report
+    alt CONFIRMED_RESOLVED
+        ReportService -> DB : Set status CLOSED
+        ReportService -> DB : Save resolution decision history
+        ReportService -> ResolutionNotifications : Notify assigned handler / triage
+    else STILL_AN_ISSUE
+        ReportService -> DB : Set status IN_PROGRESS;\nclear resolvedAt; retain current handler
+        ReportService -> DB : Save resolution decision history
+        ReportService -> ResolutionNotifications : Notify assigned handler / triage
+    end
+    ResolutionNotifications -> NotificationService : Create decision notification(s)
+    NotificationService -> DB : Persist notification(s)
+    ResolutionNotifications -> ResolutionNotifications : Publish notification event(s)
+end
+== Resident decision commits ==
+loop Each notification event
+    PushListener -> PushListener : Log after-commit event
+end
+ReportService --> App : Updated ReportResponse
+App --> Resident : Show CLOSED or IN_PROGRESS status
+App --> Staff : Show resident decision in report status
+
+note over DB
+Report creation, assignment, assignment history, notification creation,
+and resolution decisions each commit atomically within their transaction.
+end note
+
+@enduml

@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ria.olita.tech.silingan.dto.req.CreateReportRequest;
+import com.ria.olita.tech.silingan.dto.req.ReassignReportRequest;
 import com.ria.olita.tech.silingan.dto.req.ReportFilterCriteria;
+import com.ria.olita.tech.silingan.dto.req.ReportResolutionDecisionRequest;
 import com.ria.olita.tech.silingan.dto.req.UpdateReportRequest;
 import com.ria.olita.tech.silingan.dto.res.ReportResponse;
 import com.ria.olita.tech.silingan.entity.IssueStatus;
@@ -34,13 +36,14 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/v1/reports")
 @RequiredArgsConstructor
-@PreAuthorize("isAuthenticated() && hasRole('RESIDENT')")
+@PreAuthorize("isAuthenticated()")
 @Tag(name = "Reports", description = "Community issue/report APIs")
 public class ReportController {
 
 	private final ReportService reportService;
 
 	@PostMapping
+	@PreAuthorize("isAuthenticated() && hasRole('RESIDENT')")
 	@Operation(summary = "Submit report")
 	public ResponseEntity<ReportResponse> submitReport(@Valid @RequestBody CreateReportRequest request) {
 		return ResponseEntity.status(HttpStatus.CREATED).body(reportService.submitReport(request));
@@ -59,6 +62,8 @@ public class ReportController {
 		@RequestParam(required = false) UUID categoryId,
 		@Parameter(description = "Filter by assigned-to user ID")
 		@RequestParam(required = false) UUID assignedToId,
+		@Parameter(description = "Only reports currently assigned to the authenticated staff user (requires communityId)")
+		@RequestParam(required = false) Boolean assignedToMe,
 		@Parameter(description = "Filter by reporter user ID")
 		@RequestParam(required = false) UUID reporterId,
 		@Parameter(description = "Filter by assigned status (true = assigned, false = unassigned)")
@@ -82,6 +87,7 @@ public class ReportController {
 			.urgencyLevel(urgencyLevel)
 			.categoryId(categoryId)
 			.assignedToId(assignedToId)
+			.assignedToMe(assignedToMe)
 			.reporterId(reporterId)
 			.assigned(assigned)
 			.keyword(keyword)
@@ -112,6 +118,28 @@ public class ReportController {
 		@RequestBody UpdateReportRequest request
 	) {
 		return ResponseEntity.ok(reportService.updateReport(reportId, request));
+	}
+
+	@PostMapping("/{reportId}/reassign")
+	@Operation(summary = "Reassign report",
+		description = "Moves an active report to another eligible staff member or to the PMO Review Queue. Requires report management permission.")
+	public ResponseEntity<ReportResponse> reassignReport(
+		@Parameter(description = "Report ID", example = "550e8400-e29b-41d4-a716-446655440000")
+		@PathVariable UUID reportId,
+		@Valid @RequestBody ReassignReportRequest request
+	) {
+		return ResponseEntity.ok(reportService.reassignReport(reportId, request));
+	}
+
+	@PostMapping("/{reportId}/resolution-response")
+	@Operation(summary = "Confirm or reject report resolution",
+		description = "Allows only the reporting resident to confirm resolution or report that the issue is still present.")
+	public ResponseEntity<ReportResponse> respondToResolution(
+		@Parameter(description = "Report ID")
+		@PathVariable UUID reportId,
+		@Valid @RequestBody ReportResolutionDecisionRequest request
+	) {
+		return ResponseEntity.ok(reportService.respondToResolution(reportId, request));
 	}
 
 	@PutMapping("/{reportId}/cancel")

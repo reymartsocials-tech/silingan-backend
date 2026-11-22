@@ -6,7 +6,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.ria.olita.tech.silingan.dto.req.CreateReportRequest;
+import com.ria.olita.tech.silingan.dto.req.ReassignReportRequest;
 import com.ria.olita.tech.silingan.dto.req.ReportFilterCriteria;
+import com.ria.olita.tech.silingan.dto.req.ReportResolutionDecisionRequest;
 import com.ria.olita.tech.silingan.dto.req.UpdateReportRequest;
 import com.ria.olita.tech.silingan.dto.res.ReportResponse;
 import com.ria.olita.tech.silingan.entity.IssueStatus;
@@ -24,4 +26,8 @@ public interface ReportService {
 	ReportResponse updateReport(UUID reportId, UpdateReportRequest request);
 
 	ReportResponse cancelReport(UUID reportId);
+
+	ReportResponse reassignReport(UUID reportId, ReassignReportRequest request);
+
+	ReportResponse respondToResolution(UUID reportId, ReportResolutionDecisionRequest request);
 }

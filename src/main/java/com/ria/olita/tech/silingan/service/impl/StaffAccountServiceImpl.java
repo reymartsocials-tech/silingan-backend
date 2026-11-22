@@ -1,6 +1,8 @@
 package com.ria.olita.tech.silingan.service.impl;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,8 @@ import com.ria.olita.tech.silingan.entity.UserCommunity;
 import com.ria.olita.tech.silingan.entity.UserStatus;
 import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.exception.NotFoundException;
+import com.ria.olita.tech.silingan.entity.CommunityIssueRouting;
+import com.ria.olita.tech.silingan.repository.CommunityIssueRoutingRepository;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
@@ -39,6 +43,7 @@ public class StaffAccountServiceImpl implements StaffAccountService {
 	private final UserCommunityRepository userCommunityRepository;
 	private final KeycloakService keycloakService;
 	private final CommunityService communityService;
+	private final CommunityIssueRoutingRepository communityIssueRoutingRepository;
 
 	@Override
 	public StaffAccountResponse createStaffAccount(UUID communityId, CreateStaffAccountRequest request) {
@@ -144,6 +149,16 @@ public class StaffAccountServiceImpl implements StaffAccountService {
 
 		if (isLastCommunityAdmin(communityId, staffUserId)) {
 			throw new IllegalStateException("Cannot deactivate the final Community Admin. Assign another admin first.");
+		}
+
+		List<CommunityIssueRouting> activeRoutes = communityIssueRoutingRepository.findActiveByStaffUserId(staffUserId);
+		if (!activeRoutes.isEmpty()) {
+			String categories = activeRoutes.stream()
+				.map(route -> route.getCategory().getName())
+				.distinct()
+				.collect(Collectors.joining(", "));
+			throw new ConflictException("Staff member is still assigned to issue categories: " + categories
+				+ ". Assign replacement staff or route these categories to the PMO Review Queue first.");
 		}
 
 		user.setStatus(UserStatus.INACTIVE);

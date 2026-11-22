@@ -4,6 +4,8 @@ package com.ria.olita.tech.silingan.exception;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -100,6 +102,24 @@ public class GlobalExceptionHandler {
 		ApiError error = new ApiError(
 			"CONFLICT",
 			"The request conflicts with an existing record",
+			request.getRequestURI()
+		);
+
+		return ResponseEntity
+			.status(HttpStatus.CONFLICT)
+			.body(error);
+	}
+
+	@ExceptionHandler({OptimisticLockingFailureException.class, PessimisticLockingFailureException.class})
+	public ResponseEntity<ApiError> handleConcurrentModification(
+		RuntimeException ex,
+		HttpServletRequest request) {
+
+		log.warn("Concurrent modification at {}: {}", request.getRequestURI(), ex.getClass().getSimpleName());
+
+		ApiError error = new ApiError(
+			"CONFLICT",
+			"The record was modified by another request. Reload and try again",
 			request.getRequestURI()
 		);
 

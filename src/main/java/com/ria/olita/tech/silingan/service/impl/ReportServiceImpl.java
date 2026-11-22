@@ -5,37 +5,50 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.ria.olita.tech.silingan.dto.res.AttachmentResponse;
+import com.ria.olita.tech.silingan.dto.res.ReportAssignmentActivityResponse;
 import com.ria.olita.tech.silingan.dto.res.ReportResponse;
 import com.ria.olita.tech.silingan.dto.req.CreateReportRequest;
+import com.ria.olita.tech.silingan.dto.req.ReassignReportRequest;
 import com.ria.olita.tech.silingan.dto.req.ReportFilterCriteria;
+import com.ria.olita.tech.silingan.dto.req.ReportResolutionDecisionRequest;
 import com.ria.olita.tech.silingan.dto.req.UpdateReportRequest;
 import com.ria.olita.tech.silingan.entity.AttachmentOwnerType;
 import com.ria.olita.tech.silingan.entity.Community;
 import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.Issue;
+import com.ria.olita.tech.silingan.entity.IssueResolutionDecision;
 import com.ria.olita.tech.silingan.entity.IssueCategory;
+import com.ria.olita.tech.silingan.entity.IssueRoutingDestination;
 import com.ria.olita.tech.silingan.entity.IssueStatus;
+import com.ria.olita.tech.silingan.entity.ResolutionDecision;
 import com.ria.olita.tech.silingan.entity.User;
 import com.ria.olita.tech.silingan.entity.UserCommunity;
 import com.ria.olita.tech.silingan.entity.rbac.Domain;
+import com.ria.olita.tech.silingan.exception.ConflictException;
 import com.ria.olita.tech.silingan.exception.ForbiddenException;
 import com.ria.olita.tech.silingan.exception.NotFoundException;
 import com.ria.olita.tech.silingan.exception.ValidationException;
 import com.ria.olita.tech.silingan.repository.AttachmentReferenceRepository;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
+import com.ria.olita.tech.silingan.repository.IssueAssignmentHistoryRepository;
 import com.ria.olita.tech.silingan.repository.IssueCategoryRepository;
 import com.ria.olita.tech.silingan.repository.IssueRepository;
+import com.ria.olita.tech.silingan.repository.IssueResolutionDecisionRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
 import com.ria.olita.tech.silingan.repository.spec.IssueSpecifications;
 import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
+import com.ria.olita.tech.silingan.service.ReportAssignmentService;
 import com.ria.olita.tech.silingan.service.ReportService;
+import com.ria.olita.tech.silingan.service.impl.ReportResolutionNotificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -50,6 +63,12 @@ public class ReportServiceImpl implements ReportService {
 	private final UserRepository userRepository;
 	private final UserCommunityRepository userCommunityRepository;
 	private final AttachmentReferenceRepository attachmentReferenceRepository;
+	private final ReportAssignmentService reportAssignmentService;
+	private final IssueAssignmentHistoryRepository assignmentHistoryRepository;
+	private final IssueResolutionDecisionRepository resolutionDecisionRepository;
+	private final ReportResolutionNotificationService resolutionNotificationService;
+
+	private static final String UPDATE_ASSIGNMENT_REASON = "Assigned through report update";
 
 	@Override
 	public ReportResponse submitReport(CreateReportRequest request) {
@@ -86,7 +105,9 @@ public class ReportServiceImpl implements ReportService {
 			.longitude(request.longitude())
 			.build();
 
+		// Assignment is always derived server-side from community + category routing, never from the request.
 		Issue saved = issueRepository.save(issue);
+		reportAssignmentService.assignOnSubmission(saved);
 		return buildReportResponseWithAttachments(saved);
 	}
 
@@ -129,7 +150,16 @@ public class ReportServiceImpl implements ReportService {
 		}
 
 		Page<Issue> issues;
-		if (communityId != null && !canViewAllReports(context, communityId)) {
+		if (criteria != null && Boolean.TRUE.equals(criteria.getAssignedToMe())) {
+			if (communityId == null) {
+				throw new ValidationException("Community ID is required when filtering reports assigned to me");
+			}
+			criteria.setAssignedToId(currentUserId);
+			issues = issueRepository.findAll(
+				IssueSpecifications.filterByCommunityAndCriteria(communityId, criteria),
+				withDeterministicSort(pageable)
+			);
+		} else if (communityId != null && !canViewAllReports(context, communityId)) {
 			issues = issueRepository.findAll(
 				IssueSpecifications.filterByReporterAndCriteria(communityId, currentUserId, criteria),
 				pageable
@@ -154,11 +184,18 @@ public class ReportServiceImpl implements ReportService {
 			.orElseThrow(() -> new NotFoundException("Report not found"));
 		ensureMembership(currentUserId, issue.getCommunityId());
 
-		if (!isOwner(issue, currentUserId) && !canViewAllReports(context, issue.getCommunityId())) {
+		if (!isOwner(issue, currentUserId) && !isAssignee(issue, currentUserId)
+			&& !canViewAllReports(context, issue.getCommunityId())) {
 			throw new ForbiddenException("You are not allowed to view this report");
 		}
 
-		return buildReportResponseWithAttachments(issue);
+		List<ReportAssignmentActivityResponse> activities = assignmentHistoryRepository
+			.findByIssueIdOrderByChangedAtAscIdAsc(issue.getId())
+			.stream()
+			.map(history -> new ReportAssignmentActivityResponse(
+				history.getActivityTitle(), history.getActivityMessage(), history.getChangedAt()))
+			.toList();
+		return buildReportResponseWithAttachments(issue).withAssignmentActivities(activities);
 	}
 
 	@Override
@@ -166,7 +203,7 @@ public class ReportServiceImpl implements ReportService {
 		UserContext context = requireContext();
 		UUID currentUserId = parseCurrentUserId(context);
 
-		Issue issue = issueRepository.findById(reportId)
+		Issue issue = issueRepository.findByIdForUpdate(reportId)
 			.orElseThrow(() -> new NotFoundException("Report not found"));
 		ensureMembership(currentUserId, issue.getCommunityId());
 
@@ -209,29 +246,58 @@ public class ReportServiceImpl implements ReportService {
 			}
 			issue.setCategory(category);
 		}
+		boolean resolutionAwaitingConfirmation = false;
 		if (request.status() != null) {
 			if (!canManageAll) {
 				throw new ForbiddenException("Only staff/community administrators can change report status");
 			}
-			issue.setStatus(request.status());
-			if (isTerminal(request.status()) && issue.getResolvedAt() == null) {
+			if (request.status() == IssueStatus.CLOSED) {
+				throw new ForbiddenException("Only the reporting resident can confirm report closure");
+			}
+			if (request.status() == IssueStatus.AWAITING_RESIDENT_CONFIRMATION) {
+				throw new ValidationException("Use RESOLVED to request resident confirmation");
+			}
+			if (issue.getStatus() == IssueStatus.AWAITING_RESIDENT_CONFIRMATION
+				&& request.status() != IssueStatus.RESOLVED) {
+				throw new ConflictException("Report is awaiting the reporting resident's resolution decision");
+			}
+			IssueStatus newStatus = request.status() == IssueStatus.RESOLVED
+				? IssueStatus.AWAITING_RESIDENT_CONFIRMATION
+				: request.status();
+			if (isTerminal(issue.getStatus()) && issue.getStatus() != newStatus) {
+				throw new ConflictException("A closed, resolved, or cancelled report cannot change status");
+			}
+			resolutionAwaitingConfirmation = newStatus == IssueStatus.AWAITING_RESIDENT_CONFIRMATION
+				&& issue.getStatus() != IssueStatus.AWAITING_RESIDENT_CONFIRMATION;
+			issue.setStatus(newStatus);
+			if (newStatus == IssueStatus.AWAITING_RESIDENT_CONFIRMATION && issue.getResolvedAt() == null) {
 				issue.setResolvedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
+			} else if (newStatus == IssueStatus.OPEN || newStatus == IssueStatus.IN_PROGRESS) {
+				issue.setResolvedAt(null);
 			}
 		}
 		if (request.assignedToUserId() != null) {
 			if (!canManageAll) {
 				throw new ForbiddenException("Only staff/community administrators can assign reports");
 			}
-			User assignedTo = userRepository.findById(request.assignedToUserId())
-				.orElseThrow(() -> new NotFoundException("Assigned user not found"));
-			ensureMembership(request.assignedToUserId(), issue.getCommunityId());
-			issue.setAssignedTo(assignedTo);
+			boolean alreadyAssigned = issue.getAssignedTo() != null
+				&& request.assignedToUserId().equals(issue.getAssignedTo().getId());
+			if (!alreadyAssigned) {
+				UserCommunity assigneeMembership = userCommunityRepository
+					.findByUserIdAndCommunityId(request.assignedToUserId(), issue.getCommunityId())
+					.orElseThrow(() -> new NotFoundException("Assigned user not found"));
+				reportAssignmentService.reassign(issue, IssueRoutingDestination.STAFF, assigneeMembership.getId(),
+					UPDATE_ASSIGNMENT_REASON, findCurrentUser(currentUserId));
+			}
 		}
 		if (request.resolutionNotes() != null) {
 			issue.setResolutionNotes(request.resolutionNotes());
 		}
 
 		Issue saved = issueRepository.save(issue);
+		if (resolutionAwaitingConfirmation) {
+			resolutionNotificationService.notifyResidentResolutionPending(saved, UUID.randomUUID());
+		}
 		return buildReportResponseWithAttachments(saved);
 	}
 
@@ -240,7 +306,7 @@ public class ReportServiceImpl implements ReportService {
 		UserContext context = requireContext();
 		UUID currentUserId = parseCurrentUserId(context);
 
-		Issue issue = issueRepository.findById(reportId)
+		Issue issue = issueRepository.findByIdForUpdate(reportId)
 			.orElseThrow(() -> new NotFoundException("Report not found"));
 		ensureMembership(currentUserId, issue.getCommunityId());
 
@@ -249,12 +315,75 @@ public class ReportServiceImpl implements ReportService {
 		if (!owner && !canManageAll) {
 			throw new ForbiddenException("You are not allowed to cancel this report");
 		}
+		if (!owner && issue.getStatus() == IssueStatus.AWAITING_RESIDENT_CONFIRMATION) {
+			throw new ConflictException("The reporting resident must decide whether the issue is resolved");
+		}
 		if (isTerminal(issue.getStatus())) {
 			throw new ValidationException("Report is already resolved/closed/cancelled");
 		}
 
 		issue.setStatus(IssueStatus.CANCELLED);
 		Issue saved = issueRepository.save(issue);
+		return buildReportResponseWithAttachments(saved);
+	}
+
+	@Override
+	public ReportResponse reassignReport(UUID reportId, ReassignReportRequest request) {
+		UserContext context = requireContext();
+		UUID currentUserId = parseCurrentUserId(context);
+
+		// Row lock serialises concurrent reassignments of the same report.
+		Issue issue = issueRepository.findByIdForUpdate(reportId)
+			.orElseThrow(() -> new NotFoundException("Report not found"));
+		ensureMembership(currentUserId, issue.getCommunityId());
+		if (!canManageAllReports(context, issue.getCommunityId())) {
+			throw new ForbiddenException("You are not allowed to reassign this report");
+		}
+		if (isTerminal(issue.getStatus())) {
+			throw new ConflictException("Resolved, closed, or cancelled reports cannot be reassigned");
+		}
+
+		reportAssignmentService.reassign(issue, request.destinationType(), request.staffMembershipId(),
+			request.reason(), findCurrentUser(currentUserId));
+		Issue saved = issueRepository.save(issue);
+		return buildReportResponseWithAttachments(saved);
+	}
+
+	@Override
+	public ReportResponse respondToResolution(UUID reportId, ReportResolutionDecisionRequest request) {
+		UserContext context = requireContext();
+		UUID currentUserId = parseCurrentUserId(context);
+		Issue issue = issueRepository.findByIdForUpdate(reportId)
+			.orElseThrow(() -> new NotFoundException("Report not found"));
+		ensureMembership(currentUserId, issue.getCommunityId());
+
+		if (!isOwner(issue, currentUserId)) {
+			throw new ForbiddenException("Only the reporting resident can decide whether the issue is resolved");
+		}
+		if (request == null || request.decision() == null) {
+			throw new ValidationException("Resolution decision is required");
+		}
+		if (issue.getStatus() != IssueStatus.AWAITING_RESIDENT_CONFIRMATION) {
+			throw new ConflictException("Report is not awaiting resident resolution confirmation");
+		}
+
+		ResolutionDecision decision = request.decision();
+		boolean confirmedResolved = decision == ResolutionDecision.CONFIRMED_RESOLVED;
+		issue.setStatus(confirmedResolved ? IssueStatus.CLOSED : IssueStatus.IN_PROGRESS);
+		if (!confirmedResolved) {
+			issue.setResolvedAt(null);
+		}
+		Issue saved = issueRepository.save(issue);
+
+		User resident = findCurrentUser(currentUserId);
+		IssueResolutionDecision decisionHistory = resolutionDecisionRepository.save(IssueResolutionDecision.builder()
+			.issue(saved)
+			.resident(resident)
+			.decision(decision)
+			.decidedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC))
+			.build());
+		resolutionNotificationService.notifyHandlerDecision(saved, confirmedResolved, decisionHistory.getId());
+
 		return buildReportResponseWithAttachments(saved);
 	}
 
@@ -275,29 +404,7 @@ public class ReportServiceImpl implements ReportService {
 				.build())
 			.collect(Collectors.toList());
 		
-		return new ReportResponse(
-			response.id(),
-			response.communityId(),
-			response.reporterId(),
-			response.reporterName(),
-			response.assignedToId(),
-			response.assignedToName(),
-			response.categoryId(),
-			response.categoryName(),
-			response.title(),
-			response.description(),
-			response.status(),
-			response.urgencyLevel(),
-			response.customCategory(),
-			response.location(),
-			response.latitude(),
-			response.longitude(),
-			response.createdAt(),
-			response.updatedAt(),
-			response.resolvedAt(),
-			response.resolutionNotes(),
-			attachments
-		);
+		return response.withAttachments(attachments);
 	}
 
 	private UserContext requireContext() {
@@ -334,6 +441,23 @@ public class ReportServiceImpl implements ReportService {
 
 	private boolean isOwner(Issue issue, UUID userId) {
 		return issue.getReporter() != null && issue.getReporter().getId().equals(userId);
+	}
+
+	private boolean isAssignee(Issue issue, UUID userId) {
+		return issue.getAssignedTo() != null && issue.getAssignedTo().getId().equals(userId);
+	}
+
+	private User findCurrentUser(UUID currentUserId) {
+		return userRepository.findById(currentUserId)
+			.orElseThrow(() -> new NotFoundException("User not found"));
+	}
+
+	private Pageable withDeterministicSort(Pageable pageable) {
+		if (pageable.isUnpaged() || pageable.getSort().isSorted()) {
+			return pageable;
+		}
+		return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+			Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
 	}
 
 	private boolean isTerminal(IssueStatus status) {

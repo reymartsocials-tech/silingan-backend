@@ -2,6 +2,8 @@ package com.ria.olita.tech.silingan.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -15,13 +17,16 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
 import com.ria.olita.tech.silingan.dto.req.CreateReportRequest;
+import com.ria.olita.tech.silingan.dto.req.ReportResolutionDecisionRequest;
 import com.ria.olita.tech.silingan.dto.req.UpdateReportRequest;
 import com.ria.olita.tech.silingan.dto.res.ReportResponse;
 import com.ria.olita.tech.silingan.entity.Community;
 import com.ria.olita.tech.silingan.entity.CommunityStatus;
 import com.ria.olita.tech.silingan.entity.Issue;
 import com.ria.olita.tech.silingan.entity.IssueCategory;
+import com.ria.olita.tech.silingan.entity.IssueResolutionDecision;
 import com.ria.olita.tech.silingan.entity.IssueStatus;
+import com.ria.olita.tech.silingan.entity.ResolutionDecision;
 import com.ria.olita.tech.silingan.entity.SilinganRealmRole;
 import com.ria.olita.tech.silingan.entity.User;
 import com.ria.olita.tech.silingan.entity.UserCommunity;
@@ -32,13 +37,16 @@ import com.ria.olita.tech.silingan.entity.rbac.PermissionEnum;
 import com.ria.olita.tech.silingan.exception.ForbiddenException;
 import com.ria.olita.tech.silingan.repository.AttachmentReferenceRepository;
 import com.ria.olita.tech.silingan.repository.CommunityRepository;
+import com.ria.olita.tech.silingan.repository.IssueAssignmentHistoryRepository;
 import com.ria.olita.tech.silingan.repository.IssueCategoryRepository;
 import com.ria.olita.tech.silingan.repository.IssueRepository;
+import com.ria.olita.tech.silingan.repository.IssueResolutionDecisionRepository;
 import com.ria.olita.tech.silingan.repository.UserCommunityRepository;
 import com.ria.olita.tech.silingan.repository.UserRepository;
 import com.ria.olita.tech.silingan.security.context.UserContext;
 import com.ria.olita.tech.silingan.security.context.UserContextHolder;
 import com.ria.olita.tech.silingan.service.impl.ReportServiceImpl;
+import com.ria.olita.tech.silingan.service.impl.ReportResolutionNotificationService;
 
 class ReportServiceImplTest {
 
@@ -55,14 +63,18 @@ class ReportServiceImplTest {
 		UserRepository userRepository = Mockito.mock(UserRepository.class);
 		UserCommunityRepository userCommunityRepository = Mockito.mock(UserCommunityRepository.class);
 		AttachmentReferenceRepository attachmentReferenceRepository = Mockito.mock(AttachmentReferenceRepository.class);
-
+		ReportAssignmentService reportAssignmentService = Mockito.mock(ReportAssignmentService.class);
 		ReportServiceImpl service = new ReportServiceImpl(
 			issueRepository,
 			issueCategoryRepository,
 			communityRepository,
 			userRepository,
 			userCommunityRepository,
-			attachmentReferenceRepository
+			attachmentReferenceRepository,
+			reportAssignmentService,
+			Mockito.mock(IssueAssignmentHistoryRepository.class),
+			Mockito.mock(IssueResolutionDecisionRepository.class),
+			Mockito.mock(ReportResolutionNotificationService.class)
 		);
 
 		UUID userId = UUID.randomUUID();
@@ -107,6 +119,47 @@ class ReportServiceImplTest {
 		assertThat(response.id()).isNotNull();
 		assertThat(response.communityId()).isEqualTo(communityId);
 		assertThat(response.status()).isEqualTo(IssueStatus.OPEN);
+		verify(reportAssignmentService).assignOnSubmission(Mockito.any(Issue.class));
+	}
+
+	@Test
+	void shouldRejectResidentAttemptToChooseAssignee() {
+		IssueRepository issueRepository = Mockito.mock(IssueRepository.class);
+		UserCommunityRepository userCommunityRepository = Mockito.mock(UserCommunityRepository.class);
+		ReportAssignmentService reportAssignmentService = Mockito.mock(ReportAssignmentService.class);
+		ReportServiceImpl service = new ReportServiceImpl(
+			issueRepository,
+			Mockito.mock(IssueCategoryRepository.class),
+			Mockito.mock(CommunityRepository.class),
+			Mockito.mock(UserRepository.class),
+			userCommunityRepository,
+			Mockito.mock(AttachmentReferenceRepository.class),
+			reportAssignmentService,
+			Mockito.mock(IssueAssignmentHistoryRepository.class),
+			Mockito.mock(IssueResolutionDecisionRepository.class),
+			Mockito.mock(ReportResolutionNotificationService.class)
+		);
+
+		UUID residentId = UUID.randomUUID();
+		UUID communityId = UUID.randomUUID();
+		UUID reportId = UUID.randomUUID();
+		UserContextHolder.set(UserContext.builder()
+			.userId(residentId.toString())
+			.communityId(communityId.toString())
+			.roles(List.of(SilinganRealmRole.RESIDENT))
+			.communityAccess(new CommunityAccess(communityId, List.of()))
+			.build());
+
+		User resident = User.builder().id(residentId).build();
+		Issue issue = Issue.builder().id(reportId).communityId(communityId).reporter(resident).status(IssueStatus.OPEN).build();
+		when(issueRepository.findByIdForUpdate(reportId)).thenReturn(Optional.of(issue));
+		when(userCommunityRepository.findByUserIdAndCommunityId(residentId, communityId))
+			.thenReturn(Optional.of(UserCommunity.builder().user(resident).role(SilinganRealmRole.RESIDENT).build()));
+
+		assertThatThrownBy(() -> service.updateReport(reportId, new UpdateReportRequest(
+			null, null, null, null, null, UUID.randomUUID(), null, null, null, null, null)))
+			.isInstanceOf(ForbiddenException.class);
+		verify(reportAssignmentService, never()).reassign(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
 	}
 
 	@Test
@@ -117,6 +170,7 @@ class ReportServiceImplTest {
 		UserRepository userRepository = Mockito.mock(UserRepository.class);
 		UserCommunityRepository userCommunityRepository = Mockito.mock(UserCommunityRepository.class);
 		AttachmentReferenceRepository attachmentReferenceRepository = Mockito.mock(AttachmentReferenceRepository.class);
+		ReportAssignmentService reportAssignmentService = Mockito.mock(ReportAssignmentService.class);
 
 		ReportServiceImpl service = new ReportServiceImpl(
 			issueRepository,
@@ -124,7 +178,11 @@ class ReportServiceImplTest {
 			communityRepository,
 			userRepository,
 			userCommunityRepository,
-			attachmentReferenceRepository
+			attachmentReferenceRepository,
+			reportAssignmentService,
+			Mockito.mock(IssueAssignmentHistoryRepository.class),
+			Mockito.mock(IssueResolutionDecisionRepository.class),
+			Mockito.mock(ReportResolutionNotificationService.class)
 		);
 
 		UUID userId = UUID.randomUUID();
@@ -168,6 +226,7 @@ class ReportServiceImplTest {
 		UserRepository userRepository = Mockito.mock(UserRepository.class);
 		UserCommunityRepository userCommunityRepository = Mockito.mock(UserCommunityRepository.class);
 		AttachmentReferenceRepository attachmentReferenceRepository = Mockito.mock(AttachmentReferenceRepository.class);
+		ReportAssignmentService reportAssignmentService = Mockito.mock(ReportAssignmentService.class);
 
 		ReportServiceImpl service = new ReportServiceImpl(
 			issueRepository,
@@ -175,7 +234,11 @@ class ReportServiceImplTest {
 			communityRepository,
 			userRepository,
 			userCommunityRepository,
-			attachmentReferenceRepository
+			attachmentReferenceRepository,
+			reportAssignmentService,
+			Mockito.mock(IssueAssignmentHistoryRepository.class),
+			Mockito.mock(IssueResolutionDecisionRepository.class),
+			Mockito.mock(ReportResolutionNotificationService.class)
 		);
 
 		UUID currentUserId = UUID.randomUUID();
@@ -216,6 +279,8 @@ class ReportServiceImplTest {
 		UserRepository userRepository = Mockito.mock(UserRepository.class);
 		UserCommunityRepository userCommunityRepository = Mockito.mock(UserCommunityRepository.class);
 		AttachmentReferenceRepository attachmentReferenceRepository = Mockito.mock(AttachmentReferenceRepository.class);
+		ReportAssignmentService reportAssignmentService = Mockito.mock(ReportAssignmentService.class);
+		ReportResolutionNotificationService resolutionNotifications = Mockito.mock(ReportResolutionNotificationService.class);
 
 		ReportServiceImpl service = new ReportServiceImpl(
 			issueRepository,
@@ -223,7 +288,11 @@ class ReportServiceImplTest {
 			communityRepository,
 			userRepository,
 			userCommunityRepository,
-			attachmentReferenceRepository
+			attachmentReferenceRepository,
+			reportAssignmentService,
+			Mockito.mock(IssueAssignmentHistoryRepository.class),
+			Mockito.mock(IssueResolutionDecisionRepository.class),
+			resolutionNotifications
 		);
 
 		UUID staffId = UUID.randomUUID();
@@ -247,7 +316,7 @@ class ReportServiceImplTest {
 			.status(IssueStatus.OPEN)
 			.build();
 
-		when(issueRepository.findById(reportId)).thenReturn(Optional.of(issue));
+		when(issueRepository.findByIdForUpdate(reportId)).thenReturn(Optional.of(issue));
 		when(userCommunityRepository.findByUserIdAndCommunityId(staffId, communityId))
 			.thenReturn(Optional.of(UserCommunity.builder().role(SilinganRealmRole.STAFF).build()));
 		when(issueRepository.save(Mockito.any(Issue.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -262,11 +331,84 @@ class ReportServiceImplTest {
 			null,  // location
 			null,  // latitude
 			null,  // longitude
-			IssueStatus.IN_PROGRESS,  // status
+			IssueStatus.RESOLVED,  // status
 			null   // resolutionNotes
 		));
 
-		assertThat(updated.status()).isEqualTo(IssueStatus.IN_PROGRESS);
+		assertThat(updated.status()).isEqualTo(IssueStatus.AWAITING_RESIDENT_CONFIRMATION);
+		verify(resolutionNotifications).notifyResidentResolutionPending(Mockito.eq(issue), Mockito.any(UUID.class));
+		assertThatThrownBy(() -> service.updateReport(reportId, new UpdateReportRequest(
+			null, null, null, null, null, null, null, null, null, IssueStatus.CLOSED, null)))
+			.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void shouldAllowReporterToConfirmResolutionOrReopenReport() {
+		IssueRepository issueRepository = Mockito.mock(IssueRepository.class);
+		UserRepository userRepository = Mockito.mock(UserRepository.class);
+		UserCommunityRepository userCommunityRepository = Mockito.mock(UserCommunityRepository.class);
+		AttachmentReferenceRepository attachmentReferenceRepository = Mockito.mock(AttachmentReferenceRepository.class);
+		IssueResolutionDecisionRepository decisionRepository = Mockito.mock(IssueResolutionDecisionRepository.class);
+		ReportResolutionNotificationService resolutionNotifications = Mockito.mock(ReportResolutionNotificationService.class);
+
+		ReportServiceImpl service = new ReportServiceImpl(
+			issueRepository,
+			Mockito.mock(IssueCategoryRepository.class),
+			Mockito.mock(CommunityRepository.class),
+			userRepository,
+			userCommunityRepository,
+			attachmentReferenceRepository,
+			Mockito.mock(ReportAssignmentService.class),
+			Mockito.mock(IssueAssignmentHistoryRepository.class),
+			decisionRepository,
+			resolutionNotifications
+		);
+
+		UUID residentId = UUID.randomUUID();
+		UUID communityId = UUID.randomUUID();
+		UUID reportId = UUID.randomUUID();
+		User resident = User.builder().id(residentId).build();
+		User assignedStaff = User.builder().id(UUID.randomUUID()).build();
+		Issue issue = Issue.builder()
+			.id(reportId)
+			.communityId(communityId)
+			.reporter(resident)
+			.assignedTo(assignedStaff)
+			.status(IssueStatus.AWAITING_RESIDENT_CONFIRMATION)
+			.resolvedAt(java.time.LocalDateTime.now())
+			.category(IssueCategory.builder().id(UUID.randomUUID()).name("Water").build())
+			.build();
+		UserCommunity membership = UserCommunity.builder().role(SilinganRealmRole.RESIDENT).build();
+
+		UserContextHolder.set(UserContext.builder()
+			.userId(residentId.toString())
+			.roles(List.of(SilinganRealmRole.RESIDENT))
+			.communityAccess(new CommunityAccess(communityId, List.of()))
+			.build());
+
+		when(issueRepository.findByIdForUpdate(reportId)).thenReturn(Optional.of(issue));
+		when(userCommunityRepository.findByUserIdAndCommunityId(residentId, communityId)).thenReturn(Optional.of(membership));
+		when(userRepository.findById(residentId)).thenReturn(Optional.of(resident));
+		when(issueRepository.save(Mockito.any(Issue.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(decisionRepository.save(Mockito.any(IssueResolutionDecision.class))).thenAnswer(invocation -> {
+			IssueResolutionDecision decision = invocation.getArgument(0);
+			decision.setId(UUID.randomUUID());
+			return decision;
+		});
+		when(attachmentReferenceRepository.findByOwnerTypeAndOwnerId(Mockito.any(), Mockito.any())).thenReturn(List.of());
+
+		ReportResponse reopened = service.respondToResolution(reportId,
+			new ReportResolutionDecisionRequest(ResolutionDecision.STILL_AN_ISSUE));
+		assertThat(reopened.status()).isEqualTo(IssueStatus.IN_PROGRESS);
+		assertThat(issue.getResolvedAt()).isNull();
+		verify(resolutionNotifications).notifyHandlerDecision(Mockito.eq(issue), Mockito.eq(false), Mockito.any(UUID.class));
+
+		issue.setStatus(IssueStatus.AWAITING_RESIDENT_CONFIRMATION);
+		issue.setResolvedAt(java.time.LocalDateTime.now());
+		ReportResponse closed = service.respondToResolution(reportId,
+			new ReportResolutionDecisionRequest(ResolutionDecision.CONFIRMED_RESOLVED));
+		assertThat(closed.status()).isEqualTo(IssueStatus.CLOSED);
+		verify(resolutionNotifications).notifyHandlerDecision(Mockito.eq(issue), Mockito.eq(true), Mockito.any(UUID.class));
 	}
 
 	@Test
@@ -277,6 +419,7 @@ class ReportServiceImplTest {
 		UserRepository userRepository = Mockito.mock(UserRepository.class);
 		UserCommunityRepository userCommunityRepository = Mockito.mock(UserCommunityRepository.class);
 		AttachmentReferenceRepository attachmentReferenceRepository = Mockito.mock(AttachmentReferenceRepository.class);
+		ReportAssignmentService reportAssignmentService = Mockito.mock(ReportAssignmentService.class);
 
 		ReportServiceImpl service = new ReportServiceImpl(
 			issueRepository,
@@ -284,7 +427,11 @@ class ReportServiceImplTest {
 			communityRepository,
 			userRepository,
 			userCommunityRepository,
-			attachmentReferenceRepository
+			attachmentReferenceRepository,
+			reportAssignmentService,
+			Mockito.mock(IssueAssignmentHistoryRepository.class),
+			Mockito.mock(IssueResolutionDecisionRepository.class),
+			Mockito.mock(ReportResolutionNotificationService.class)
 		);
 
 		UUID userId = UUID.randomUUID();
@@ -308,7 +455,7 @@ class ReportServiceImplTest {
 			.status(IssueStatus.OPEN)
 			.build();
 
-		when(issueRepository.findById(reportId)).thenReturn(Optional.of(issue));
+		when(issueRepository.findByIdForUpdate(reportId)).thenReturn(Optional.of(issue));
 		when(userCommunityRepository.findByUserIdAndCommunityId(userId, communityId))
 			.thenReturn(Optional.of(UserCommunity.builder().role(SilinganRealmRole.RESIDENT).build()));
 		when(issueRepository.save(Mockito.any(Issue.class))).thenAnswer(invocation -> invocation.getArgument(0));

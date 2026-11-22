@@ -28,6 +28,9 @@ public class ReportFilterCriteria {
 	@Schema(description = "Filter by issue category ID")
 	private UUID categoryId;
 
+	@Schema(description = "Only reports currently assigned to the authenticated staff user")
+	private Boolean assignedToMe;
+
 	@Schema(description = "Filter by assigned-to user ID")
 	private UUID assignedToId;
 

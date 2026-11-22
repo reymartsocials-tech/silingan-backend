@@ -3,6 +3,7 @@ package com.ria.olita.tech.silingan.repository;
 import org.springframework.data.repository.query.Param;
 import com.ria.olita.tech.silingan.dto.res.DashboardReportStatusResponse;
 import com.ria.olita.tech.silingan.dto.res.DashboardReportResponse;
+import java.util.Collection;
 import java.util.List;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -14,11 +15,14 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import com.ria.olita.tech.silingan.entity.Issue;
 import com.ria.olita.tech.silingan.entity.IssueStatus;
+
+import jakarta.persistence.LockModeType;
 
 @Repository
 public interface IssueRepository extends JpaRepository<Issue, UUID>, JpaSpecificationExecutor<Issue> {
@@ -38,6 +42,13 @@ public interface IssueRepository extends JpaRepository<Issue, UUID>, JpaSpecific
 	@EntityGraph(attributePaths = {"reporter", "category", "community"})
 	@Query("SELECT i FROM Issue i WHERE i.id = ?1")
 	Optional<Issue> findByIdWithDetails(UUID id);
+
+	/** Serialises concurrent assignment changes on the same report. */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("SELECT i FROM Issue i WHERE i.id = :id")
+	Optional<Issue> findByIdForUpdate(@Param("id") UUID id);
+
+	long countByAssignedStaffMembershipIdAndStatusIn(UUID assignedStaffMembershipId, Collection<IssueStatus> statuses);
 
 	@EntityGraph(attributePaths = {"reporter", "category", "community", "assignedTo"})
 	@Override
